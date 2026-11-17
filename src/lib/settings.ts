@@ -6,6 +6,7 @@ const DEFAULTS: Settings = {
   toolCategories: ["אופניים חשמליים", "קורקינטים חשמליים"],
   partCategories: ["סוללות", "מנועים", "צגים", "בקרים", "צמות ראשיות", "כפתורים וידיות גז"],
   defectCategories: ["מדבקה", "סימון", "תיוג", "אריזה", "תיעוד", "אחר"],
+  lowStockThreshold: 3,
 };
 
 export async function getSettings(): Promise<Settings> {

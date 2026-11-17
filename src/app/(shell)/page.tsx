@@ -1,27 +1,38 @@
 import Link from "next/link";
 import { getUserServer, canAccess } from "@/lib/auth";
 import { readCollection, ensureInitSafe } from "@/lib/dashboard-helpers";
+import { getSettings } from "@/lib/settings";
 import { Badge, Stat } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
 import { CALL_STATUS_LABELS, CASE_STATUS_LABELS, DEFECT_STATUS_LABELS } from "@/lib/types";
-import type { InspectionCase, Defect, ServiceCall, ToolModel, Notification } from "@/lib/types";
+import type { InspectionCase, Defect, ServiceCall, ToolModel, Notification, Part } from "@/lib/types";
+
+interface ActionItem {
+  title: string;
+  sub?: string;
+  href: string;
+  tone: "red" | "amber" | "purple";
+}
 
 export default async function DashboardPage() {
   await ensureInitSafe();
   const user = await getUserServer();
   if (!user) return null;
 
-  const [cases, defects, calls, models, notes] = await Promise.all([
+  const [cases, defects, calls, models, notes, parts, settings] = await Promise.all([
     readCollection<InspectionCase>("cases"),
     readCollection<Defect>("defects"),
     readCollection<ServiceCall>("serviceCalls"),
     readCollection<ToolModel>("models"),
     readCollection<Notification>("notifications"),
+    readCollection<Part>("parts"),
+    getSettings(),
   ]);
 
   const canCases = canAccess(user, "cases");
   const canInventory = canAccess(user, "inventory");
   const modelName = (id: string) => models.find((m) => m.id === id)?.commercialName ?? "—";
+  const caseById = new Map(cases.map((c) => [c.id, c]));
 
   // תיקים בטיפול (לא הושלמו)
   const activeCases = cases
@@ -37,38 +48,100 @@ export default async function DashboardPage() {
     .map((c) => ({ c, missing: c.checklist.filter((i) => !i.done) }))
     .filter((x) => x.missing.length > 0);
 
-  // קריאות שירות חדשות/פתוחות
-  const openCalls = calls
+  // קריאות שירות — סוכן רואה את שלו בלבד
+  const myCalls = calls
     .filter((c) => (user.role === "agent" ? c.agentId === user.id : true))
-    .filter((c) => c.status === "new" || c.status === "inProgress" || c.status === "awaitingPart")
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const newCalls = myCalls.filter((c) => c.status === "new");
+  const openCalls = myCalls.filter((c) => c.status === "new" || c.status === "inProgress" || c.status === "awaitingPart");
+
+  // חוסרים במלאי + דגמים הממתינים לאישור
+  const threshold = settings.lowStockThreshold ?? 3;
+  const lowStock = parts.filter((p) => p.qty <= threshold).sort((a, b) => a.qty - b.qty);
+  const pendingModels = canCases ? models.filter((m) => !m.archived && m.approval.status === "pending") : [];
+
+  // ─── מרכז הפעולות: דורש טיפול ────────────────────────────────────────────
+  const actions: ActionItem[] = [
+    ...awaiting.slice(0, 3).map((d) => ({
+      title: `ליקוי: ${d.title}`,
+      sub: `ממתין לאימות · תיק ${caseById.get(d.caseId)?.caseNumber ?? "—"}`,
+      href: `/cases/${d.caseId}?tab=defects`,
+      tone: "purple" as const,
+    })),
+    ...newCalls.slice(0, 2).map((c) => ({
+      title: `קריאה ${c.callNumber}`,
+      sub: `${modelName(c.modelId ?? "")} · חדשה — ממתינה לטיפול`,
+      href: `/service/${c.id}`,
+      tone: "red" as const,
+    })),
+    ...casesWithMissing.slice(0, 2).map(({ c, missing }) => ({
+      title: `תיק ${c.caseNumber} — השלמות חסרות`,
+      sub: missing.map((m) => m.label).join(" · "),
+      href: `/cases/${c.id}`,
+      tone: "amber" as const,
+    })),
+    ...lowStock.slice(0, 2).map((p) => ({
+      title: `${p.name} — מלאי נמוך`,
+      sub: `${p.qty} יחידות במלאי · ${p.sku}`,
+      href: `/parts?q=${encodeURIComponent(p.sku)}`,
+      tone: "amber" as const,
+    })),
+    ...pendingModels.slice(0, 2).map((m) => ({
+      title: `${m.commercialName} — ממתין לאישור`,
+      sub: "אישור פנימי של הדגם",
+      href: `/models/${m.id}`,
+      tone: "red" as const,
+    })),
+  ].slice(0, 8);
 
   const myNotes = notes
     .filter((n) => n.audience.includes(user.role) && !n.readBy.includes(user.id))
     .slice(0, 3);
 
-  const greeting = `שלום${user.name ? `, ${user.name}` : ""} 👋`;
-
   return (
     <div>
+      {/* כותרת — 01 / OVERVIEW */}
       <div className="mb-6">
-        <h1 className="font-display text-2xl font-extrabold sm:text-3xl">{greeting}</h1>
-        <p className="mt-1 text-sm text-cz-mut">הנעשה במערכת היום — הכול במקום אחד</p>
+        <div className="num mb-1.5 text-xs font-bold tracking-widest text-cz-red">01 / OVERVIEW</div>
+        <h1 className="font-display text-2xl font-extrabold sm:text-3xl">מרכז התפעול</h1>
+        <p className="mt-1 text-sm text-cz-mut">
+          מצב עדכני של בדיקות, שירות, חלפים ודגמים · שלום, {user.name}
+        </p>
       </div>
 
-      {/* כרטיסי ספירה */}
+      {/* ארבעה מדדים */}
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {canCases && (
-          <>
-            <Stat label="תיקי מכון התקנים בטיפול" value={activeCases.length} tone="red" href="/cases" />
-            <Stat label="ליקויים פתוחים" value={defects.filter((d) => d.status === "open" || d.status === "inProgress").length} tone="amber" href="/defects?status=open" />
-            <Stat label="ליקויים ממתינים לאימות" value={awaiting.length} tone="purple" href="/defects?status=awaitingVerification" />
-            <Stat label="השלמות חסרות" value={casesWithMissing.reduce((s, x) => s + x.missing.length, 0)} href="/cases" />
-          </>
-        )}
-        <Stat label="קריאות שירות פתוחות" value={openCalls.length} tone="green" href="/service" />
-        {canInventory && <Stat label="דגמים במאגר" value={models.filter((m) => !m.archived).length} href="/models" />}
+        {canCases && <Stat label="תיקים בטיפול" value={activeCases.length} tone="red" href="/cases" />}
+        {canCases && <Stat label="ליקויים לאימות" value={awaiting.length} tone="purple" href="/defects?status=awaitingVerification" />}
+        <Stat label="קריאות שירות חדשות" value={newCalls.length} tone="green" href="/service" />
+        {canInventory && <Stat label="חוסרים במלאי" value={lowStock.length} tone="amber" href="/parts" />}
       </div>
+
+      {/* דורש טיפול */}
+      {actions.length > 0 ? (
+        <section className="card mb-6 overflow-hidden">
+          <div className="flex items-center justify-between border-b border-cz-line-soft px-5 py-4">
+            <h2 className="font-display text-lg font-extrabold">דורש טיפול</h2>
+            <span className="num rounded-full bg-cz-red px-2.5 py-0.5 text-xs font-bold text-white">{actions.length}</span>
+          </div>
+          <ul className="divide-y divide-cz-line-soft">
+            {actions.map((a, i) => (
+              <li key={i}>
+                <Link href={a.href} className="flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-cz-bg">
+                  <span className={`size-2 shrink-0 rounded-full ${a.tone === "red" ? "bg-cz-red" : a.tone === "amber" ? "bg-amber-500" : "bg-violet-600"}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-bold">{a.title}</span>
+                    {a.sub && <span className="block truncate text-xs text-cz-mut">{a.sub}</span>}
+                  </span>
+                  <span className="shrink-0 text-sm text-cz-fog" aria-hidden>→</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : (
+        <div className="card mb-6 p-5 text-center text-sm text-cz-fog">הכול מטופל — אין פריטים הדורשים פעולה 🎉</div>
+      )}
 
       {/* התראות אחרונות */}
       {myNotes.length > 0 && (
@@ -89,7 +162,7 @@ export default async function DashboardPage() {
         {canCases && (
           <section className="card p-5">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-display text-lg font-extrabold">תיקי מכון התקנים — בטיפול</h2>
+              <h2 className="font-display text-lg font-extrabold">02 / תיקי מכון — בטיפול</h2>
               <Link href="/cases" className="text-sm font-bold text-cz-red hover:underline">כל התיקים →</Link>
             </div>
             {activeCases.length === 0 ? (
@@ -122,7 +195,7 @@ export default async function DashboardPage() {
         {canCases && (
           <section className="card p-5">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-display text-lg font-extrabold">ממתין לאימות</h2>
+              <h2 className="font-display text-lg font-extrabold">03 / ממתין לאימות</h2>
               <Link href="/defects" className="text-sm font-bold text-cz-red hover:underline">כל הליקויים →</Link>
             </div>
             {awaiting.length === 0 ? (
@@ -151,7 +224,7 @@ export default async function DashboardPage() {
         {/* פריטים חסרים */}
         {canCases && (
           <section className="card p-5">
-            <h2 className="mb-3 font-display text-lg font-extrabold">השלמות חסרות — תיקי מכון התקנים</h2>
+            <h2 className="mb-3 font-display text-lg font-extrabold">04 / השלמות חסרות</h2>
             {casesWithMissing.length === 0 ? (
               <p className="py-4 text-center text-sm text-cz-fog">הכול הושלם</p>
             ) : (
@@ -172,7 +245,7 @@ export default async function DashboardPage() {
         {/* קריאות שירות */}
         <section className="card p-5">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-display text-lg font-extrabold">קריאות שירות פתוחות</h2>
+            <h2 className="font-display text-lg font-extrabold">05 / קריאות שירות פתוחות</h2>
             <Link href="/service" className="text-sm font-bold text-cz-red hover:underline">כל הקריאות →</Link>
           </div>
           {openCalls.length === 0 ? (

@@ -269,6 +269,7 @@ export interface Settings {
   toolCategories: string[];
   partCategories: string[];
   defectCategories: string[];
+  lowStockThreshold?: number; // מתחת לכמות זו יוצג חיווי מלאי נמוך (ברירת מחדל 3)
 }
 
 // ─── מיפויי תצוגה בעברית ────────────────────────────────────────────────────
