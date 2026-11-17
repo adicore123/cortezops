@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+/* ─── לוח צבעים של קורטז (חולץ מ־cortez.co.il) ─────────────────────────── */
+@theme {
+  --color-cz-red: #c80a04; /* אדום מותג — רקע בהיר */
+  --color-cz-red-bright: #e8231c; /* אדום על משטחים כהים */
+  --color-cz-red-dark: #9e0803; /* hover */
+  --color-cz-red-soft: #fbedec;
+
+  --color-cz-asphalt: #0a0a0c; /* סרגל צד */
+  --color-cz-dark: #141419;
+  --color-cz-dark-2: #0d0d11;
+  --color-cz-dark-3: #17171c;
+
+  --color-cz-ink: #141418;
+  --color-cz-mut: #6b6862;
+  --color-cz-fog: #8a867e;
+  --color-cz-on-dark: #e6e6ea;
+
+  --color-cz-bg: #faf8f4; /* רקע אפליקציה */
+  --color-cz-surface: #ffffff;
+  --color-cz-sand: #f1ece2;
+  --color-cz-input: #faf8f4;
+
+  --color-cz-green: #0e7a3c;
+  --color-cz-green-soft: #eaf6ec;
+
+  --color-cz-line: rgba(20, 20, 24, 0.12);
+  --color-cz-line-soft: rgba(20, 20, 24, 0.07);
+
+  --font-display: var(--font-birzia), "Heebo", system-ui, sans-serif;
+  --font-body: var(--font-heebo), system-ui, sans-serif;
+  --font-tech: var(--font-chakra), monospace;
+
+  --radius-cz: 1.25rem;
+}
+
+html {
+  direction: rtl;
+}
+
+body {
+  background-color: var(--color-cz-bg);
+  color: var(--color-cz-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* מספרים ומחירים בסגנון האתר */
+.num {
+  font-family: var(--font-tech);
+  font-style: italic;
+  letter-spacing: 0.02em;
+}
+
+/* שדות טופס בסיסיים */
+.field {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-cz-line);
+  background: var(--color-cz-surface);
+  padding: 0.5rem 0.875rem;
+  font-size: 0.925rem;
+  color: var(--color-cz-ink);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.field:focus {
+  outline: none;
+  border-color: var(--color-cz-red);
+  box-shadow: 0 0 0 3px rgba(200, 10, 4, 0.12);
+}
+.field::placeholder {
+  color: var(--color-cz-fog);
+}
+.label {
+  display: block;
+  margin-bottom: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-cz-ink);
+}
+
+/* כרטיס */
+.card {
+  background: var(--color-cz-surface);
+  border: 1px solid var(--color-cz-line-soft);
+  border-radius: var(--radius-cz);
+  box-shadow: 0 1px 2px rgba(20, 20, 24, 0.04);
+}
+
+/* גלילת פס עדין */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(20, 20, 24, 0.18);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* הדפסה */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}
