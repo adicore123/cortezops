@@ -62,6 +62,7 @@ export default function CaseDetailPage() {
 
   const { case: kase, model, defects, documents } = data;
   const openDefects = defects.filter((d) => d.status !== "verified").length;
+  const verified = defects.filter((d) => d.status === "verified").length;
   const awaiting = defects.filter((d) => d.status === "awaitingVerification").length;
   const missing = kase.checklist.filter((i) => !i.done);
 
@@ -90,6 +91,22 @@ export default function CaseDetailPage() {
           </>
         }
       />
+
+      {/* התקדמות התיק: ליקויים אומתים מתוך הכל */}
+      {defects.length > 0 && (
+        <div className="card mb-5 p-4">
+          <div className="mb-2 flex items-baseline justify-between gap-3 text-xs font-bold">
+            <span>התקדמות התיק</span>
+            <span className="num text-cz-mut">{verified} מתוך {defects.length} ליקויים אומתו</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-cz-sand" role="progressbar" aria-valuemin={0} aria-valuemax={defects.length} aria-valuenow={verified} aria-label="התקדמות אימות ליקויים">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${verified === defects.length ? "bg-cz-green" : "bg-cz-red"}`}
+              style={{ width: `${Math.round((verified / defects.length) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       <QuickAttachModal
         open={attachOpen}
