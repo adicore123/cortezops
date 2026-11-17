@@ -250,9 +250,11 @@ export default function Shell({
                 {user.name.slice(0, 1)}
               </span>
               <span className="max-w-28 truncate text-sm font-bold sm:max-w-none">{user.name}</span>
-              <Badge tone={user.role === "admin" ? "red" : user.role === "staff" ? "blue" : "gray"} className="hidden sm:inline-flex">
-                {roleLabel}
-              </Badge>
+              <span className="hidden sm:inline-flex">
+                <Badge tone={user.role === "admin" ? "red" : user.role === "staff" ? "blue" : "gray"}>
+                  {roleLabel}
+                </Badge>
+              </span>
             </div>
           </div>
         </header>

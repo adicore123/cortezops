@@ -157,13 +157,13 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* תיקים בטיפול */}
         {canCases && (
           <section className="card p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-display text-lg font-extrabold">02 / תיקי מכון — בטיפול</h2>
-              <Link href="/cases" className="text-sm font-bold text-cz-red hover:underline">כל התיקים →</Link>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="min-w-0 font-display text-lg font-extrabold">02 / תיקי מכון — בטיפול</h2>
+              <Link href="/cases" className="shrink-0 text-sm font-bold text-cz-red hover:underline">כל התיקים →</Link>
             </div>
             {activeCases.length === 0 ? (
               <p className="py-4 text-center text-sm text-cz-fog">אין תיקים פעילים 🎉</p>
@@ -174,7 +174,7 @@ export default async function DashboardPage() {
                   return (
                     <li key={c.id} className="flex items-center justify-between gap-2 py-2.5">
                       <div className="min-w-0">
-                        <Link href={`/cases/${c.id}`} className="font-bold hover:text-cz-red">
+                        <Link href={`/cases/${c.id}`} className="block truncate font-bold hover:text-cz-red">
                           <span className="num">{c.caseNumber}</span> · {modelName(c.modelId)}
                         </Link>
                         {c.nextAction && <div className="truncate text-xs text-cz-mut">הבא: {c.nextAction}</div>}
@@ -206,7 +206,7 @@ export default async function DashboardPage() {
                   const c = cases.find((x) => x.id === d.caseId);
                   return (
                     <li key={d.id} className="py-2.5">
-                      <Link href={`/cases/${d.caseId}?tab=defects`} className="font-bold hover:text-cz-red">
+                      <Link href={`/cases/${d.caseId}?tab=defects`} className="block truncate font-bold hover:text-cz-red">
                         {d.title} <span className="text-xs font-normal text-cz-mut">({d.category})</span>
                       </Link>
                       <div className="text-xs text-cz-fog">
@@ -231,7 +231,7 @@ export default async function DashboardPage() {
               <ul className="divide-y divide-cz-line-soft">
                 {casesWithMissing.slice(0, 5).map(({ c, missing }) => (
                   <li key={c.id} className="py-2.5">
-                    <Link href={`/cases/${c.id}`} className="font-bold hover:text-cz-red">
+                    <Link href={`/cases/${c.id}`} className="block truncate font-bold hover:text-cz-red">
                       <span className="num">{c.caseNumber}</span> · {modelName(c.modelId)}
                     </Link>
                     <div className="text-xs text-amber-700">חסר: {missing.map((m) => m.label).join(" · ")}</div>
@@ -255,7 +255,7 @@ export default async function DashboardPage() {
               {openCalls.slice(0, 5).map((c) => (
                 <li key={c.id} className="flex items-center justify-between gap-2 py-2.5">
                   <div className="min-w-0">
-                    <Link href={`/service/${c.id}`} className="font-bold hover:text-cz-red">
+                    <Link href={`/service/${c.id}`} className="block truncate font-bold hover:text-cz-red">
                       <span className="num">{c.callNumber}</span> · {modelName(c.modelId ?? "")}
                     </Link>
                     <div className="truncate text-xs text-cz-mut">{c.agentName} · {fmtDate(c.createdAt)}</div>
