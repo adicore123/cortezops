@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { PublicUser } from "@/lib/auth";
 import { Badge, fmtDateTime } from "./ui";
+import GlobalSearch from "./GlobalSearch";
 
 // ─── אייקונים (SVG מינימליים) ──────────────────────────────────────────────
 
@@ -193,6 +194,9 @@ export default function Shell({
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={logoUrl} alt="" className="h-7 w-auto" />
           </div>
+
+          {/* חיפוש גלובלי */}
+          <GlobalSearch />
 
           <div className="ms-auto flex items-center gap-2">
             {/* התראות */}
