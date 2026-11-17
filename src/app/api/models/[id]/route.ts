@@ -2,9 +2,10 @@ import { NextRequest } from "next/server";
 import { route, json, bad, body } from "@/lib/api";
 import { readCollection, updateById, getById } from "@/lib/db/store";
 import { requireUser, canAccess } from "@/lib/auth";
-import type { ToolModel, InspectionCase, Defect, Part, ServiceCall, ModelApproval, ApprovalStatus } from "@/lib/types";
+import { APPROVAL_LABELS } from "@/lib/types";
+import type { ToolModel, InspectionCase, Defect, Part, ServiceCall, CaseDocument, ModelApproval, ApprovalStatus } from "@/lib/types";
 
-/** כרטיס דגם: פרטים + תיקים + חלפים תואמים + קריאות — לפי הרשאות המשתמש. */
+/** כרטיס דגם: פרטים + תיקים + חלפים תואמים + קריאות + מסמכים + היסטוריה — לפי הרשאות המשתמש. */
 export const GET = route(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
   const res = await requireUser(req);
   if ("error" in res) return res.error;
@@ -16,20 +17,51 @@ export const GET = route(async (req: NextRequest, ctx: { params: Promise<{ id: s
   const out: Record<string, unknown> = { model };
 
   if (canAccess(res.user, "cases")) {
-    const [cases, defects] = await Promise.all([
+    const [cases, defects, documents] = await Promise.all([
       readCollection<InspectionCase>("cases"),
       readCollection<Defect>("defects"),
+      readCollection<CaseDocument>("documents"),
     ]);
-    out.cases = cases
+    const modelCases = cases
       .filter((c) => c.modelId === id)
-      .sort((a, b) => b.openedAt.localeCompare(a.openedAt))
-      .map((c) => {
-        const defs = defects.filter((d) => d.caseId === c.id);
-        return {
-          ...c,
-          openDefects: defs.filter((d) => d.status !== "verified" && d.status !== "fixed").length,
-        };
+      .sort((a, b) => b.openedAt.localeCompare(a.openedAt));
+    out.cases = modelCases.map((c) => {
+      const defs = defects.filter((d) => d.caseId === c.id);
+      return {
+        ...c,
+        openDefects: defs.filter((d) => d.status !== "verified" && d.status !== "fixed").length,
+      };
+    });
+
+    const caseById = new Map(modelCases.map((c) => [c.id, c]));
+    const caseIds = new Set(caseById.keys());
+    out.documents = documents
+      .filter((d) => caseIds.has(d.caseId))
+      .sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt))
+      .slice(0, 40)
+      .map((d) => ({
+        id: d.id,
+        caseId: d.caseId,
+        caseNumber: caseById.get(d.caseId)?.caseNumber ?? "",
+        title: d.title || d.originalName,
+        type: d.type,
+        uploadedBy: d.uploadedBy,
+        uploadedAt: d.uploadedAt,
+      }));
+
+    // היסטוריה מאוחדת: אירועי התיקים של הדגם + רישום אישור פנימי
+    const history: { at: string; action: string; user?: string; caseNumber?: string }[] = [];
+    for (const c of modelCases) {
+      for (const h of c.history) history.push({ at: h.at, action: h.action, user: h.user, caseNumber: c.caseNumber });
+    }
+    if (model.approval.approver) {
+      history.push({
+        at: model.approval.date ?? model.updatedAt,
+        action: `אישור פנימי: ${APPROVAL_LABELS[model.approval.status]}`,
+        user: model.approval.approver,
       });
+    }
+    out.history = history.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 40);
   }
 
   if (canAccess(res.user, "inventory")) {

@@ -141,7 +141,7 @@ export const GET = route(async (req: NextRequest) => {
   }
 
   // ─── קריאות שירות — לכולם; סוכן רואה רק את שלו ───────────────────────────
-  const calls = await readCollection<ServiceCall>("service-calls");
+  const calls = await readCollection<ServiceCall>("serviceCalls");
   const callItems: SearchItem[] = [];
   for (const call of calls) {
     if (user.role === "agent" && call.agentId !== user.id) continue;
