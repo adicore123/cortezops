@@ -21,9 +21,19 @@ export const PATCH = route(async (req: NextRequest) => {
     toolCategories?: string[];
     partCategories?: string[];
     defectCategories?: string[];
+    lowStockThreshold?: number;
   }>(req);
 
   const current = await getSettings();
+  // סף מלאי נמוך: מספר שלם תקין בין 0 ל־999, אחרת ברירת המחדל
+  const rawThreshold = data.lowStockThreshold;
+  const threshold =
+    rawThreshold === undefined
+      ? current.lowStockThreshold
+      : Number.isInteger(rawThreshold) && rawThreshold >= 0 && rawThreshold <= 999
+        ? rawThreshold
+        : 3;
+
   const next: Settings = {
     importer: {
       ...current.importer,
@@ -34,6 +44,7 @@ export const PATCH = route(async (req: NextRequest) => {
     toolCategories: data.toolCategories ?? current.toolCategories,
     partCategories: data.partCategories ?? current.partCategories,
     defectCategories: data.defectCategories ?? current.defectCategories,
+    lowStockThreshold: threshold,
   };
 
   const rows = await readCollection<Settings>("settings");

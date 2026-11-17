@@ -454,7 +454,6 @@ export async function seedIfNeeded(): Promise<boolean> {
 
   // ── שמירת הכול ──
   await writeCollection("users", () => usersSeed);
-  await writeCollection("sessions", () => []);
   await writeCollection<ToolModel>("models", () => [mMax2, mSportRS, mMax2RS, mMax3, m10x, mSharkG2]);
   await writeCollection<InspectionCase>("cases", () => [case1, case2, case3]);
   await writeCollection<Defect>("defects", () => [defect1, defect2]);

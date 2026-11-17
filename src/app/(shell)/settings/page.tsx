@@ -12,7 +12,7 @@ import type { PublicUser } from "@/lib/auth";
 const TABS = [
   { key: "importer", label: "יבואן ולוגו" },
   { key: "users", label: "משתמשים והרשאות" },
-  { key: "categories", label: "קטגוריות" },
+  { key: "categories", label: "קטגוריות ומלאי" },
   { key: "backup", label: "גיבוי" },
 ] as const;
 
@@ -370,8 +370,26 @@ function CategoriesTab({ settings, busy, onSave }: { settings: Settings; busy: b
           </div>
         </div>
       ))}
+      {/* סף מלאי נמוך */}
+      <div className="card p-5">
+        <h3 className="font-display font-extrabold">התראת מלאי נמוך</h3>
+        <p className="mb-3 mt-1 text-xs text-cz-fog">חלק שכמותו נמוכה או שווה לסף יסומן בחיווי מלאי נמוך בלוח הבקרה ובמלאי</p>
+        <label className="label" htmlFor="low-stock">סף יחידות</label>
+        <input
+          id="low-stock"
+          type="number"
+          min={0}
+          max={999}
+          className="field w-32"
+          value={draft.lowStockThreshold ?? 3}
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10);
+            setDraft({ ...draft, lowStockThreshold: Number.isNaN(v) ? undefined : v });
+          }}
+        />
+      </div>
       <div className="flex justify-end">
-        <Btn loading={busy} onClick={() => onSave(draft, "הקטגוריות נשמרו")}>שמירת קטגוריות</Btn>
+        <Btn loading={busy} onClick={() => onSave(draft, "הקטגוריות וההגדרות נשמרו")}>שמירה</Btn>
       </div>
     </div>
   );

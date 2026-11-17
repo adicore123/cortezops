@@ -6,7 +6,7 @@ import { storage } from "@/lib/db/storage";
 import { requireArea } from "@/lib/auth";
 
 const COLLECTIONS = [
-  "users", "sessions", "models", "cases", "defects", "documents",
+  "users", "models", "cases", "defects", "documents",
   "files", "parts", "movements", "serviceCalls", "notifications", "settings",
 ];
 

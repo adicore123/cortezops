@@ -17,6 +17,7 @@ function PartsInner() {
   const [rows, setRows] = useState<PartRow[] | null>(null);
   const [models, setModels] = useState<ToolModel[]>([]);
   const [showCosts, setShowCosts] = useState(false);
+  const [lowStockAt, setLowStockAt] = useState(3);
   const [categories, setCategories] = useState<string[]>([]);
   const [q, setQ] = useState(searchParams.get("q") ?? "");
   const [category, setCategory] = useState("");
@@ -32,12 +33,13 @@ function PartsInner() {
     try {
       const [partsData, settingsData, modelsData] = await Promise.all([
         apiGet<{ parts: PartRow[]; showCosts: boolean }>("/api/parts"),
-        apiGet<{ settings: { partCategories: string[] } }>("/api/settings"),
+        apiGet<{ settings: { partCategories: string[]; lowStockThreshold?: number } }>("/api/settings"),
         apiGet<{ models: ToolModel[] }>("/api/models"),
       ]);
       setRows(partsData.parts);
       setShowCosts(partsData.showCosts);
       setCategories(settingsData.settings.partCategories);
+      setLowStockAt(settingsData.settings.lowStockThreshold ?? 3);
       setModels(modelsData.models.filter((m) => !m.archived));
     } catch (err) {
       toast.push("error", err instanceof Error ? err.message : "טעינת המלאי נכשלה");
@@ -128,7 +130,7 @@ function PartsInner() {
                 </div>
               </div>
               <div className="text-center">
-                <div className={`num text-2xl font-bold ${p.qty === 0 ? "text-cz-red" : p.qty <= 3 ? "text-amber-600" : "text-cz-green"}`}>{p.qty}</div>
+                <div className={`num text-2xl font-bold ${p.qty === 0 ? "text-cz-red" : p.qty <= lowStockAt ? "text-amber-600" : "text-cz-green"}`}>{p.qty}</div>
                 <div className="text-[11px] font-semibold text-cz-fog">במלאי</div>
               </div>
               <div className="text-center">

@@ -30,6 +30,8 @@ export default function ModelsPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState<ToolModel | null>(null);
   const [busy, setBusy] = useState(false);
+  const [returnModel, setReturnModel] = useState<ModelRow | null>(null);
+  const [returnNote, setReturnNote] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -66,8 +68,7 @@ export default function ModelsPage() {
     });
   }, [rows, q, category, showArchived]);
 
-  async function setApproval(m: ModelRow, status: ApprovalStatus) {
-    const note = status === "returned" ? window.prompt("הערת החזרה (מה חסר?):") ?? "" : "";
+  async function setApproval(m: ModelRow, status: ApprovalStatus, note = "") {
     try {
       await apiSend(`/api/models/${m.id}`, "PATCH", { approvalStatus: status, approvalNote: note });
       toast.push("success", `הדגם סומן כ${APPROVAL_LABELS[status]}`);
@@ -131,7 +132,25 @@ export default function ModelsPage() {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((m) => (
-            <div key={m.id} className="card flex flex-col gap-3 p-4 sm:p-5">
+            <div key={m.id} className="card flex flex-col overflow-hidden p-0">
+              {/* תמונת הכלי */}
+              <Link href={`/models/${m.id}`} className="relative block aspect-[16/9] bg-cz-sand" aria-label={m.commercialName}>
+                {m.imageFileId ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={`/api/files/${m.imageFileId}`} alt={m.commercialName} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="grid h-full place-items-center">
+                    <svg viewBox="0 0 24 24" fill="currentColor" className="size-12 text-cz-line" aria-hidden>
+                      <path d="M15 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM4 17c0-3 3-4.5 6-4.5s6 1.5 6 4.5v2H4zM17.5 8l3.5 6h-7z" />
+                    </svg>
+                  </span>
+                )}
+                {m.archived && (
+                  <span className="absolute end-3 top-3"><Badge tone="gray">בארכיון</Badge></span>
+                )}
+              </Link>
+
+              <div className="flex flex-1 flex-col gap-3 p-4 sm:p-5">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <Link href={`/models/${m.id}`} className="font-display text-lg font-extrabold leading-snug hover:text-cz-red">
@@ -141,7 +160,9 @@ export default function ModelsPage() {
                     {[m.manufacturer, m.manufacturerCode && `קוד ${m.manufacturerCode}`, m.country].filter(Boolean).join(" · ")}
                   </div>
                 </div>
-                {m.archived && <Badge tone="gray">בארכיון</Badge>}
+                {!m.archived && m.approval.status === "pending" && canApprove && (
+                  <Badge tone="amber">דורש אישור</Badge>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -167,7 +188,7 @@ export default function ModelsPage() {
                     <button onClick={() => setApproval(m, "approved")} className="rounded-full px-3 py-1.5 text-xs font-bold text-cz-green hover:bg-cz-green-soft">אישור</button>
                   )}
                   {canApprove && !m.archived && m.approval.status !== "returned" && (
-                    <button onClick={() => setApproval(m, "returned")} className="rounded-full px-3 py-1.5 text-xs font-bold text-cz-red hover:bg-cz-red-soft">החזרה</button>
+                    <button onClick={() => { setReturnModel(m); setReturnNote(""); }} className="rounded-full px-3 py-1.5 text-xs font-bold text-cz-red hover:bg-cz-red-soft">החזרה</button>
                   )}
                   {canEdit && (
                     <>
@@ -179,10 +200,39 @@ export default function ModelsPage() {
                   )}
                 </span>
               </div>
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* דיאלוג החזרת דגם להשלמות */}
+      <Modal open={returnModel !== null} onClose={() => setReturnModel(null)} title={returnModel ? `החזרת דגם — ${returnModel.commercialName}` : ""}>
+        <div className="space-y-4">
+          <Field label="הערת החזרה (מה חסר?)">
+            <textarea
+              className="field min-h-20"
+              value={returnNote}
+              onChange={(e) => setReturnNote(e.target.value)}
+              placeholder="לדוגמה: חסר צילום מדבקה ותיק מכון לא נפתח"
+              autoFocus
+            />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" onClick={() => setReturnModel(null)}>ביטול</Btn>
+            <Btn
+              variant="dark"
+              onClick={() => {
+                if (!returnModel) return;
+                setApproval(returnModel, "returned", returnNote);
+                setReturnModel(null);
+              }}
+            >
+              החזרה להשלמות
+            </Btn>
+          </div>
+        </div>
+      </Modal>
 
       <ModelEditModal
         open={editOpen}
