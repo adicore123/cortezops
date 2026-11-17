@@ -12,14 +12,18 @@ export default function FileUploader({
   accept = "application/pdf,image/*",
   hint = "PDF או תמונות · עד 25MB",
   compact,
+  capture,
 }: {
   onUploaded: (file: StoredFile) => void;
   onError?: (message: string) => void;
   accept?: string;
   hint?: string;
   compact?: boolean;
+  /** צילום ישיר ממצלמת הטלפון (נייד) — כפתור "צלם" מתחת לאזור ההעלאה */
+  capture?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
 
@@ -37,6 +41,7 @@ export default function FileUploader({
     } finally {
       setBusy(false);
       if (inputRef.current) inputRef.current.value = "";
+      if (cameraRef.current) cameraRef.current.value = "";
     }
   }
 
@@ -72,6 +77,31 @@ export default function FileUploader({
           onChange={(e) => handleFiles(e.target.files)}
         />
       </div>
+      {capture && (
+        <>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); cameraRef.current?.click(); }}
+            className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-cz-line bg-white text-sm font-bold text-cz-ink transition-colors hover:border-cz-red/50 hover:text-cz-red md:hidden"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" className="size-5" aria-hidden>
+              <path d="M9 4 7.6 5.6H5a2 2 0 0 0-2 2V18a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7.6a2 2 0 0 0-2-2h-2.6L15 4zm3 5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z" />
+            </svg>
+            צלם מהמצלמה
+          </button>
+          <input
+            ref={cameraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            multiple
+            className="hidden"
+            onChange={(e) => handleFiles(e.target.files)}
+            aria-hidden
+            tabIndex={-1}
+          />
+        </>
+      )}
     </div>
   );
 }

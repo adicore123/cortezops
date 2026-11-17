@@ -329,7 +329,7 @@ function DefectEditModal({
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div>
                 <div className="label">תמונה לפני</div>
-                <FileUploader compact onUploaded={(f) => attachImage("beforeAdd", f)} onError={(m) => toast.push("error", m)} hint="צילום המדבקה לפני ההחלפה" />
+                <FileUploader compact capture onUploaded={(f) => attachImage("beforeAdd", f)} onError={(m) => toast.push("error", m)} hint="צילום המדבקה לפני ההחלפה" />
                 {defect.fix.beforeFileIds.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {defect.fix.beforeFileIds.map((fid) => (
@@ -341,7 +341,7 @@ function DefectEditModal({
               </div>
               <div>
                 <div className="label">תמונה אחרי</div>
-                <FileUploader compact onUploaded={(f) => attachImage("afterAdd", f)} onError={(m) => toast.push("error", m)} hint="צילום המדבקה החדשה" />
+                <FileUploader compact capture onUploaded={(f) => attachImage("afterAdd", f)} onError={(m) => toast.push("error", m)} hint="צילום המדבקה החדשה" />
                 {defect.fix.afterFileIds.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {defect.fix.afterFileIds.map((fid) => (

@@ -337,7 +337,7 @@ function PartEditModal({
         </Field>
 
         <Field label="תמונות החלק">
-          <FileUploader compact onUploaded={(f) => setImages((arr) => [...arr, f])} onError={(m) => toast.push("error", m)} />
+          <FileUploader compact capture onUploaded={(f) => setImages((arr) => [...arr, f])} onError={(m) => toast.push("error", m)} />
           {images.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
               {images.map((f) => (

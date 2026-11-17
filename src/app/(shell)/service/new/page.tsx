@@ -85,7 +85,7 @@ export default function NewServiceCallPage() {
         </Field>
 
         <Field label="תמונות וקבצים">
-          <FileUploader onUploaded={(f) => setAttachments((a) => [...a, f])} onError={(m) => toast.push("error", m)} hint="צילום מהמצלמה או PDF" accept="image/*,application/pdf" />
+          <FileUploader capture onUploaded={(f) => setAttachments((a) => [...a, f])} onError={(m) => toast.push("error", m)} hint="צילום מהמצלמה או PDF" accept="image/*,application/pdf" />
           {attachments.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
               {attachments.map((f) => <FileChip key={f.id} file={f} onRemove={() => setAttachments((a) => a.filter((x) => x.id !== f.id))} />)}
