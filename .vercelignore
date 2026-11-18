@@ -1,0 +1,10 @@
+# Local runtime data and credentials
+/data
+/.env*
+
+# Local installers, diagnostics, and generated files
+/Antigravity-x64.exe
+/kb-res.json
+/scripts/check-mongo.cjs
+/*.tsbuildinfo
+/.zcode
