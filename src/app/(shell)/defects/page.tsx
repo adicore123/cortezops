@@ -4,8 +4,9 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { apiGet, apiSend } from "@/lib/client";
-import { Badge, Btn, EmptyState, PageHeader, Spinner, fmtDate } from "@/components/ui";
+import { Badge, Btn, EmptyState, PageHeader, ListSkeleton, fmtDate, fmtDateTime } from "@/components/ui";
 import { useToast } from "@/components/Toasts";
+import ConfirmModal from "@/components/ConfirmModal";
 import { DEFECT_FLOW, DEFECT_STATUS_LABELS, DEFECT_STATUS_TONES } from "@/lib/defect-flow";
 import type { DefectStatus } from "@/lib/types";
 
@@ -45,6 +46,7 @@ function DefectsInner() {
   const [q, setQ] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<DefectRow | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -88,7 +90,19 @@ function DefectsInner() {
     }
   }
 
-  if (!rows) return <div className="flex justify-center py-24"><Spinner className="size-8 text-cz-red" /></div>;
+  async function removeDefect() {
+    if (!deleting) return;
+    try {
+      await apiSend(`/api/defects/${deleting.id}`, "DELETE");
+      toast.push("success", `הליקוי "${deleting.title}" נמחק ונרשם בהיסטוריית התיק`);
+      setDeleting(null);
+      await load();
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "המחיקה נכשלה");
+    }
+  }
+
+  if (!rows) return <ListSkeleton rows={5} />;
 
   return (
     <div>
@@ -159,6 +173,7 @@ function DefectsInner() {
                   {r.owner && <span>אחראי: {r.owner}</span>}
                   {r.dueDate && <span>יעד: {fmtDate(r.dueDate)}</span>}
                   {r.certificateSection && <span>בתעודה: {r.certificateSection}</span>}
+                  <span className="text-cz-fog">עודכן: {fmtDateTime(r.updatedAt)}</span>
                 </div>
               </div>
               <Badge tone={DEFECT_STATUS_TONES[r.status]}>{DEFECT_STATUS_LABELS[r.status]}</Badge>
@@ -187,18 +202,36 @@ function DefectsInner() {
                 <Link href={`/cases/${r.caseId}?tab=defects`} className="inline-flex min-h-9 items-center rounded-full bg-cz-sand px-4 text-xs font-bold text-cz-ink hover:bg-cz-line">
                   לתיק
                 </Link>
+                <button
+                  onClick={() => setDeleting(r)}
+                  className="grid size-9 place-items-center rounded-full text-cz-fog hover:bg-cz-red-soft hover:text-cz-red"
+                  aria-label={`מחיקת ${r.title}`}
+                  title="מחיקת הליקוי"
+                >
+                  🗑
+                </button>
               </div>
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmModal
+        open={!!deleting}
+        title="מחיקת ליקוי"
+        message={deleting ? `למחוק את הליקוי "${deleting.title}" מהתיק ${deleting.caseNumber}? הרשומה תימחק לצמיתות והמחיקה תירשם בהיסטוריית התיק.` : ""}
+        confirmLabel="מחיקה"
+        danger
+        onConfirm={removeDefect}
+        onClose={() => setDeleting(null)}
+      />
     </div>
   );
 }
 
 export default function DefectsPage() {
   return (
-    <Suspense fallback={<div className="flex justify-center py-24"><Spinner className="size-8 text-cz-red" /></div>}>
+    <Suspense fallback={<ListSkeleton rows={5} />}>
       <DefectsInner />
     </Suspense>
   );

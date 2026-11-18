@@ -7,7 +7,7 @@ import { requireArea } from "@/lib/auth";
 
 const COLLECTIONS = [
   "users", "models", "cases", "defects", "documents",
-  "files", "parts", "movements", "serviceCalls", "notifications", "settings",
+  "files", "parts", "movements", "serviceCalls", "repairs", "faultDocs", "notifications", "settings",
 ];
 
 /** רשימת הגיבויים הקיימים */

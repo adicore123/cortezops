@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { apiSend } from "@/lib/client";
-import { Badge, Btn, EmptyState, Field, Modal } from "@/components/ui";
+import { Badge, Btn, EmptyState, Field, Modal, fmtDateTime } from "@/components/ui";
 import { useToast } from "@/components/Toasts";
 import FileUploader, { FileChip } from "@/components/FileUploader";
+import ConfirmModal from "@/components/ConfirmModal";
 import { DEFECT_STATUS_LABELS, DOC_TYPE_LABELS } from "@/lib/types";
 import { DEFECT_FLOW as FLOW, DEFECT_STATUS_TONES as STATUS_TONES } from "@/lib/defect-flow";
 import type { Defect, DefectStatus, StoredFile, CaseDocument } from "@/lib/types";
@@ -16,6 +17,8 @@ export default function DefectsTab({ data, reload }: { data: CaseDetailData; rel
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<Defect | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState<Defect | null>(null);
+  const [timelineFor, setTimelineFor] = useState<string | null>(null);
 
   async function changeStatus(defect: Defect, to: DefectStatus) {
     try {
@@ -24,6 +27,18 @@ export default function DefectsTab({ data, reload }: { data: CaseDetailData; rel
       reload();
     } catch (err) {
       toast.push("error", err instanceof Error ? err.message : "העדכון נכשל");
+    }
+  }
+
+  async function deleteDefect() {
+    if (!deleting) return;
+    try {
+      await apiSend(`/api/defects/${deleting.id}`, "DELETE");
+      toast.push("success", `הליקוי "${deleting.title}" נמחק ונרשם בהיסטוריית התיק`);
+      setDeleting(null);
+      reload();
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "המחיקה נכשלה");
     }
   }
 
@@ -61,9 +76,38 @@ export default function DefectsTab({ data, reload }: { data: CaseDetailData; rel
                     <Btn key={op.to} size="sm" variant={op.variant} onClick={() => changeStatus(d, op.to)}>{op.label}</Btn>
                   ))}
                   <Btn size="sm" variant="outline" onClick={() => setEditing(d)}>פתיחה לעריכה</Btn>
+                  <button
+                    onClick={() => setTimelineFor(timelineFor === d.id ? null : d.id)}
+                    className="inline-flex min-h-9 items-center rounded-full px-3 text-xs font-bold text-cz-mut hover:bg-cz-sand"
+                    title="תיעוד שינויי סטטוס"
+                  >
+                    ⏱ תיעוד שינויים
+                  </button>
+                  <button
+                    onClick={() => setDeleting(d)}
+                    className="grid size-9 place-items-center rounded-full text-cz-fog hover:bg-cz-red-soft hover:text-cz-red"
+                    aria-label={`מחיקת ${d.title}`}
+                    title="מחיקת הליקוי"
+                  >
+                    🗑
+                  </button>
                 </div>
               </div>
             </div>
+
+            {/* ציר זמן שינויי סטטוס — תיעוד מלא עם זמנים */}
+            {timelineFor === d.id && d.history.length > 0 && (
+              <ol className="mt-3 space-y-1.5 rounded-2xl bg-cz-bg p-4 text-sm">
+                {[...d.history].reverse().map((h, i) => (
+                  <li key={i} className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="font-bold text-cz-ink">
+                      {h.action}{h.from ? ` מ"${h.from}"` : ""}{h.to ? ` ל"${h.to}"` : ""}
+                    </span>
+                    <span className="text-xs text-cz-fog">{h.user} · {fmtDateTime(h.at)}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
 
             {/* מדבקה: לפני / אחרי */}
             {d.category === "מדבקה" && (d.fix.beforeFileIds.length > 0 || d.fix.afterFileIds.length > 0) && (
@@ -106,6 +150,16 @@ export default function DefectsTab({ data, reload }: { data: CaseDetailData; rel
           reload={reload}
         />
       )}
+
+      <ConfirmModal
+        open={!!deleting}
+        title="מחיקת ליקוי"
+        message={deleting ? `למחוק את הליקוי "${deleting.title}"? הרשומה תימחק לצמיתות והמחיקה תירשם בהיסטוריית התיק.` : ""}
+        confirmLabel="מחיקה"
+        danger
+        onConfirm={deleteDefect}
+        onClose={() => setDeleting(null)}
+      />
     </div>
   );
 }

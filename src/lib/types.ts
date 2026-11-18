@@ -102,6 +102,9 @@ export interface InspectionCase {
   };
   checklist: CaseChecklistItem[];
   history: HistoryEntry[];
+  /** אישור מכון התקנים — תיק מסומן ככזה נכנס להיסטוריה */
+  approvedAt?: string;
+  approvedBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -244,9 +247,78 @@ export interface ServiceCall {
   status: ServiceCallStatus;
   assignee?: string;
   treatmentLog: TreatmentEntry[];
+  /** תיעוד שינויי סטטוס/אחראי עם זמן ומשתמש */
+  history: HistoryEntry[];
   resolution?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** מודול תיקונים (מעבדה) — מעקב אחר כלים בתיקון */
+export type RepairDeviceType = "bicycle" | "scooter";
+
+export type RepairStatus = "waiting" | "inProgress" | "completed";
+
+export const REPAIR_DEVICE_LABELS: Record<RepairDeviceType, string> = {
+  bicycle: "אופניים",
+  scooter: "קורקינט",
+};
+
+export const REPAIR_DEVICE_CATEGORY: Record<RepairDeviceType, string> = {
+  bicycle: "אופניים חשמליים",
+  scooter: "קורקינטים חשמליים",
+};
+
+export const REPAIR_STATUS_LABELS: Record<RepairStatus, string> = {
+  waiting: "ממתין לתיקון",
+  inProgress: "בטיפול",
+  completed: "תיקון הסתיים",
+};
+
+export interface Repair {
+  id: string;
+  repairNumber: string; // RP-2026-001
+  deviceType: RepairDeviceType; // אופניים / קורקינט
+  modelId: string; // מקושר למאגר הדגמים
+  modelName?: string; // שם הדגם לשמירה/גיבוי
+  serialNumber: string; // מספר סידורי / שלדה
+  faultDescription: string; // מה התקלה
+  fixDescription?: string; // מה תוקן
+  delayReason?: string; // למה מתעכב
+  status: RepairStatus;
+  technician?: string; // טכנאי / אחראי מטפל
+  customerName?: string; // שם לקוח / חנות / סוכן
+  customerPhone?: string; // טלפון ליצירת קשר
+  usedPartIds: string[]; // חלפים ששימשו בתיקון
+  notes?: string;
+  completedAt?: string;
+  history: HistoryEntry[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** מרכז תקלות ומדריכים — מסמך ידע לפי דגם */
+export type FaultDocCategory = "fault" | "display" | "manual" | "other";
+
+export const FAULT_DOC_CATEGORIES: Record<FaultDocCategory, string> = {
+  fault: "תקלה ופתרון",
+  display: "הגדרות צג",
+  manual: "מדריך",
+  other: "אחר",
+};
+
+export interface FaultDoc {
+  id: string;
+  modelIds: string[]; // דגמים שהמסמך רלוונטי להם
+  title: string;
+  category: FaultDocCategory;
+  code?: string; // קוד תקלה (למשל E-3)
+  notes?: string;
+  fileId: string;
+  originalName: string;
+  uploadedBy: string;
+  uploadedAt: string;
 }
 
 export interface Notification {

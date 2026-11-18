@@ -10,6 +10,7 @@ export const GET = route(async (_req: NextRequest) => {
   return json({
     ok: true,
     storage: storage.kind(),
+    db: process.env.MONGODB_URI ? "mongodb-atlas" : "local",
     users: users.length,
   });
 });

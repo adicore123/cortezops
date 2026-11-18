@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import { route, json, bad, body } from "@/lib/api";
-import { updateById } from "@/lib/db/store";
+import { readCollection, updateById, writeCollection } from "@/lib/db/store";
 import { requireArea } from "@/lib/auth";
 import { DEFECT_STATUS_LABELS } from "@/lib/types";
-import type { Defect, DefectStatus, StoredFile } from "@/lib/types";
+import type { Defect, DefectStatus, StoredFile, InspectionCase, CaseDocument } from "@/lib/types";
 
 interface PatchDefectBody {
   fields?: Partial<Pick<Defect, "category" | "title" | "asReceived" | "certificateSection" | "certificatePage" | "requiredChange" | "owner" | "dueDate" | "needsRecheck">>;
@@ -75,4 +75,36 @@ export const PATCH = route(async (req: NextRequest, ctx: { params: Promise<{ id:
 
   if (!updated) return bad("ליקוי לא נמצא", 404);
   return json({ defect: updated });
+});
+
+/** מחיקת ליקוי — מנוקה ממסמכים מקושרים ונרשם בהיסטוריית התיק. */
+export const DELETE = route(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
+  const res = await requireArea(req, "cases");
+  if ("error" in res) return res.error;
+  const { id } = await ctx.params;
+
+  const defects = await readCollection<Defect>("defects");
+  const defect = defects.find((d) => d.id === id);
+  if (!defect) return bad("ליקוי לא נמצא", 404);
+  const now = new Date().toISOString();
+
+  await writeCollection<Defect>("defects", (items) => items.filter((d) => d.id !== id));
+  await writeCollection<CaseDocument>("documents", (items) =>
+    items.map((d) =>
+      d.defectIds.includes(id) ? { ...d, defectIds: d.defectIds.filter((x) => x !== id) } : d
+    )
+  );
+  await writeCollection<InspectionCase>("cases", (items) =>
+    items.map((c) =>
+      c.id === defect.caseId
+        ? {
+            ...c,
+            updatedAt: now,
+            history: [...c.history, { at: now, user: res.user.name, action: `נמחק ליקוי: ${defect.title}` }],
+          }
+        : c
+    )
+  );
+
+  return json({ ok: true });
 });

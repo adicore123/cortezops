@@ -64,6 +64,7 @@ export const POST = route(async (req: NextRequest) => {
     linkedPartIds: data.linkedPartIds ?? [],
     status: "new",
     treatmentLog: [],
+    history: [],
     createdAt: now,
     updatedAt: now,
   };

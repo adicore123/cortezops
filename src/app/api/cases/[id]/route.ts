@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
 import { route, json, bad, body } from "@/lib/api";
-import { readCollection, updateById, getById, newId } from "@/lib/db/store";
+import { readCollection, updateById, getById, newId, writeCollection } from "@/lib/db/store";
+import { storage } from "@/lib/db/storage";
 import { requireArea } from "@/lib/auth";
 import { CASE_STATUS_LABELS } from "@/lib/types";
-import type { InspectionCase, Defect, CaseDocument, ToolModel, StoredFile, CaseStatus, CaseChecklistItem } from "@/lib/types";
+import type { InspectionCase, Defect, CaseDocument, ToolModel, StoredFile, CaseStatus, CaseChecklistItem, Part } from "@/lib/types";
 
 export const GET = route(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
   const res = await requireArea(req, "cases");
@@ -41,6 +42,7 @@ interface PatchCaseBody {
   order?: Partial<InspectionCase["order"]>;
   inspection?: Partial<InspectionCase["inspection"]>;
   status?: CaseStatus;
+  approveInstitute?: boolean; // אישור מכון התקנים → נכנס להיסטוריה
   checklist?: CaseChecklistItem[];
   checklistAdd?: string;
   checklistRemove?: string;
@@ -77,6 +79,14 @@ export const PATCH = route(async (req: NextRequest, ctx: { params: Promise<{ id:
       next.status = data.status;
     }
 
+    // אישור מכון התקנים — התיק מסומן ונכנס להיסטוריה
+    if (data.approveInstitute && !c.approvedAt) {
+      next.approvedAt = now;
+      next.approvedBy = res.user.name;
+      next.status = "completed";
+      history.push({ at: now, user: res.user.name, action: "התיק אושר ע״י מכון התקנים — נכנס להיסטוריה", to: "מאושר" });
+    }
+
     if (data.checklist) {
       const removed = c.checklist.filter((old) => !data.checklist!.some((n) => n.id === old.id));
       if (removed.length) history.push({ at: now, user: res.user.name, action: `הוסרו השלמות: ${removed.map((r) => r.label).join(", ")}` });
@@ -104,4 +114,52 @@ export const PATCH = route(async (req: NextRequest, ctx: { params: Promise<{ id:
 
   if (!updated) return bad("תיק לא נמצא", 404);
   return json({ case: updated });
+});
+
+/** מחיקת תיק — קסקדה: ליקויים, מסמכים וקבצים שאינם משותפים. */
+export const DELETE = route(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
+  const res = await requireArea(req, "cases");
+  if ("error" in res) return res.error;
+  const { id } = await ctx.params;
+
+  const [cases, defects, documents, parts, settingsRows] = await Promise.all([
+    readCollection<InspectionCase>("cases"),
+    readCollection<Defect>("defects"),
+    readCollection<CaseDocument>("documents"),
+    readCollection<Part>("parts"),
+    readCollection("settings"),
+  ]);
+  const kase = cases.find((c) => c.id === id);
+  if (!kase) return bad("תיק לא נמצא", 404);
+
+  const caseDefects = defects.filter((d) => d.caseId === id);
+  const caseDocs = documents.filter((d) => d.caseId === id);
+
+  // קבצים מוגנים: לוגו, תמונות חלפים, וקבצים השייכים לתיקים/ליקויים אחרים
+  const settings = settingsRows[0] as { importer?: { logoFileId?: string } } | undefined;
+  const protectedIds = new Set<string>();
+  if (settings?.importer?.logoFileId) protectedIds.add(settings.importer.logoFileId);
+  for (const p of parts) for (const fid of p.imageFileIds) protectedIds.add(fid);
+  for (const d of documents.filter((x) => x.caseId !== id)) protectedIds.add(d.fileId);
+  for (const d of defects.filter((x) => x.caseId !== id)) {
+    for (const fid of [...d.fix.beforeFileIds, ...d.fix.afterFileIds]) protectedIds.add(fid);
+  }
+
+  const doomed = new Set<string>();
+  for (const d of caseDocs) doomed.add(d.fileId);
+  for (const d of caseDefects) {
+    for (const fid of [...d.fix.beforeFileIds, ...d.fix.afterFileIds]) doomed.add(fid);
+  }
+  const filesToDelete = [...doomed].filter((fid) => !protectedIds.has(fid));
+
+  // מחיקות
+  await writeCollection<InspectionCase>("cases", (items) => items.filter((c) => c.id !== id));
+  await writeCollection<Defect>("defects", (items) => items.filter((d) => d.caseId !== id));
+  await writeCollection<CaseDocument>("documents", (items) => items.filter((d) => d.caseId !== id));
+  await writeCollection("files", (items: StoredFile[]) => items.filter((f) => !filesToDelete.includes(f.id)));
+  for (const fid of filesToDelete) {
+    await storage.deleteUpload(fid).catch(() => undefined);
+  }
+
+  return json({ ok: true, deleted: { defects: caseDefects.length, documents: caseDocs.length, files: filesToDelete.length } });
 });

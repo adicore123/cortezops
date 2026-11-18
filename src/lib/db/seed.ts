@@ -3,7 +3,7 @@ import { storage } from "./storage";
 import { hashPassword } from "../auth";
 import type {
   User, ToolModel, InspectionCase, Defect, CaseDocument, StoredFile,
-  Part, PartMovement, ServiceCall, Notification, Settings,
+  Part, PartMovement, ServiceCall, Repair, Notification, Settings,
 } from "../types";
 
 // ─── יצירת קובץ placeholder בעלייה ─────────────────────────────────────────
@@ -75,7 +75,16 @@ function samplePdf(lines: string[]): Buffer {
 
 export async function seedIfNeeded(): Promise<boolean> {
   const users = await readCollection<User>("users");
-  if (users.length > 0) return false; // כבר מאותחל
+  if (users.length > 0) {
+    // אם המערכת כבר אותחלה בעבר אך אוסף תיקונים עדיין לא נזרע — נזרע דוגמאות תיקונים
+    const existingRepairs = await readCollection<Repair>("repairs");
+    if (existingRepairs.length === 0) {
+      const existingModels = await readCollection<ToolModel>("models");
+      const existingParts = await readCollection<Part>("parts");
+      await seedInitialRepairs(existingModels, existingParts);
+    }
+    return false;
+  }
 
   // תפיסת נעילת seed: מופעי שרת שונים (serverless) לא יזרעו פעמיים
   const usersSeeded = await writeCollectionIfAbsent<User>("users", []);
@@ -427,6 +436,11 @@ export async function seedIfNeeded(): Promise<boolean> {
       treatmentLog: [
         { id: newId(), at: daysAgo(3), user: "דני כהן", note: "נבדק בטלפון — ככל הנראה צם או צג. הוזמן צג חלופי." },
       ],
+      history: [
+        { at: daysAgo(4), user: "אבי מזרחי — אופני BYCULE", action: "הקריאה נפתחה", to: "חדשה" },
+        { at: daysAgo(3), user: "דני כהן", action: "הקצאת אחראי", to: "דני כהן" },
+        { at: daysAgo(3), user: "דני כהן", action: "עדכון סטטוס", from: "חדשה", to: "בטיפול" },
+      ],
       createdAt: daysAgo(4), updatedAt: daysAgo(3),
     },
     {
@@ -438,6 +452,7 @@ export async function seedIfNeeded(): Promise<boolean> {
       attachmentFileIds: [], linkedPartIds: [pThrottle.id],
       status: "new",
       treatmentLog: [],
+      history: [],
       createdAt: daysAgo(1), updatedAt: daysAgo(1),
     },
   ];
@@ -464,10 +479,104 @@ export async function seedIfNeeded(): Promise<boolean> {
   await writeCollection<ServiceCall>("serviceCalls", () => serviceCalls);
   await writeCollection<Notification>("notifications", () => notifications);
   await writeCollection<Settings>("settings", () => [settingsSeed]);
+  await seedInitialRepairs([mMax2, mSportRS, mMax2RS, mMax3, m10x, mSharkG2], parts);
 
   for (const u of uploads) {
     await storage.saveUpload(u.id, u.buf);
   }
 
   return true;
+}
+
+async function seedInitialRepairs(models: ToolModel[], parts: Part[]) {
+  const now = new Date();
+  const iso = (d: Date) => d.toISOString();
+  const daysAgo = (n: number) => iso(new Date(now.getTime() - n * 24 * 60 * 60 * 1000));
+  const year = now.getFullYear();
+
+  const bike1 = models.find((m) => m.category.includes("אופניים")) ?? models[0];
+  const scooter1 = models.find((m) => m.category.includes("קורקינט")) ?? models[1] ?? models[0];
+  const bike2 = models.filter((m) => m.category.includes("אופניים"))[1] ?? bike1;
+  const displayPart = parts.find((p) => p.sku.includes("DISP"));
+  const throttlePart = parts.find((p) => p.sku.includes("THR"));
+
+  const repairsSeed: Repair[] = [
+    {
+      id: newId(),
+      repairNumber: `RP-${year}-001`,
+      deviceType: "bicycle",
+      modelId: bike1?.id ?? "",
+      modelName: bike1?.commercialName ?? "CORTEZ MAX 2 2027",
+      serialNumber: "SN-MX2-40912",
+      faultDescription: "צג לא נדלק לאחר רכיבה בגשם, שגיאת תקשורת E-3 עם הבקר",
+      fixDescription: "נבדקה צמה ראשית, הוזמן צג LCD-3 להחלפה",
+      delayReason: "ממתין לאישור לקוח על החלפת צג וצמה",
+      status: "inProgress",
+      technician: "דני כהן",
+      customerName: "אופני העיר — סניף מרכז",
+      customerPhone: "050-8112233",
+      usedPartIds: displayPart ? [displayPart.id] : [],
+      notes: "נבדק מתח סוללה — תקין (54.2V)",
+      history: [
+        { at: daysAgo(5), user: "דני כהן", action: "נפתח כרטיס תיקון", to: "ממתין לתיקון" },
+        { at: daysAgo(3), user: "דני כהן", action: "שינוי סטטוס", from: "ממתין לתיקון", to: "בטיפול" },
+        { at: daysAgo(2), user: "דני כהן", action: "עדכון סיבת עיכוב", to: "ממתין לאישור לקוח על החלפת צג וצמה" },
+      ],
+      createdBy: "דני כהן",
+      createdAt: daysAgo(5),
+      updatedAt: daysAgo(2),
+    },
+    {
+      id: newId(),
+      repairNumber: `RP-${year}-002`,
+      deviceType: "scooter",
+      modelId: scooter1?.id ?? "",
+      modelName: scooter1?.commercialName ?? "CORTEZ 10X",
+      serialNumber: "SN-10X-88719",
+      faultDescription: "ידית גז נתקעת ולעיתים הכלי מפסיק להגיב באמצע נסיעה",
+      fixDescription: "",
+      delayReason: "",
+      status: "waiting",
+      technician: "דני כהן",
+      customerName: "אבי מזרחי — אופני BYCYLE",
+      customerPhone: "052-4455667",
+      usedPartIds: throttlePart ? [throttlePart.id] : [],
+      notes: "הגיע היום עם שליח למעבדה",
+      history: [
+        { at: daysAgo(1), user: "רונית לוי", action: "נפתח כרטיס תיקון", to: "ממתין לתיקון" },
+      ],
+      createdBy: "רונית לוי",
+      createdAt: daysAgo(1),
+      updatedAt: daysAgo(1),
+    },
+    {
+      id: newId(),
+      repairNumber: `RP-${year}-003`,
+      deviceType: "bicycle",
+      modelId: bike2?.id ?? "",
+      modelName: bike2?.commercialName ?? "CORTEZ SPORT RS",
+      serialNumber: "SN-SPRS-10394",
+      faultDescription: "חופש בכידון ורעש בבלימה קדמית",
+      fixDescription: "חיזוק מערכת היגוי, החלפת רפידות בלם קדמי וכיול דיסק",
+      delayReason: "",
+      status: "completed",
+      technician: "דני כהן",
+      customerName: "רוכב פרטי — יוסי לוי",
+      customerPhone: "054-9988776",
+      usedPartIds: [],
+      notes: "נמסר חזרה ללקוח לאחר נסיעת מבחן",
+      completedAt: daysAgo(2),
+      history: [
+        { at: daysAgo(7), user: "דני כהן", action: "נפתח כרטיס תיקון", to: "ממתין לתיקון" },
+        { at: daysAgo(6), user: "דני כהן", action: "שינוי סטטוס", from: "ממתין לתיקון", to: "בטיפול" },
+        { at: daysAgo(2), user: "דני כהן", action: "תועד מה תוקן", to: "חיזוק מערכת היגוי, החלפת רפידות בלם קדמי וכיול דיסק" },
+        { at: daysAgo(2), user: "דני כהן", action: "שינוי סטטוס", from: "בטיפול", to: "תיקון הסתיים" },
+      ],
+      createdBy: "דני כהן",
+      createdAt: daysAgo(7),
+      updatedAt: daysAgo(2),
+    },
+  ];
+
+  await writeCollectionIfAbsent<Repair>("repairs", repairsSeed);
 }

@@ -6,8 +6,10 @@ import Link from "next/link";
 import { apiGet, apiSend } from "@/lib/client";
 import { Badge, Btn, EmptyState, Field, Modal, PageHeader, Spinner, fmtDateTime } from "@/components/ui";
 import { useToast } from "@/components/Toasts";
+import BackLink from "@/components/BackLink";
+import ConfirmModal from "@/components/ConfirmModal";
 import { CALL_STATUS_LABELS, MOVEMENT_LABELS } from "@/lib/types";
-import type { ServiceCall, ServiceCallStatus, ToolModel, Part, StoredFile } from "@/lib/types";
+import type { FaultDoc, ServiceCall, ServiceCallStatus, StoredFile, ToolModel, Part } from "@/lib/types";
 
 interface CallDetail {
   call: ServiceCall;
@@ -35,10 +37,21 @@ export default function ServiceCallDetailPage() {
   const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [faultDocs, setFaultDocs] = useState<FaultDoc[]>([]);
+  const [faultPreview, setFaultPreview] = useState<FaultDoc | null>(null);
+  const [resolveOpen, setResolveOpen] = useState(false);
+  const [resolutionText, setResolutionText] = useState("");
 
   const load = useCallback(async () => {
     try {
-      setData(await apiGet<CallDetail>(`/api/service-calls/${id}`));
+      const detail = await apiGet<CallDetail>(`/api/service-calls/${id}`);
+      setData(detail);
+      // מסמכי תקלות רלוונטיים לדגם הקריאה — לחיפוש מהיר של התקלה
+      if (detail.call.modelId) {
+        apiGet<{ faultDocs: FaultDoc[] }>(`/api/fault-docs?modelId=${detail.call.modelId}`)
+          .then((d) => setFaultDocs(d.faultDocs))
+          .catch(() => setFaultDocs([]));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "טעינה נכשלה");
     }
@@ -66,6 +79,7 @@ export default function ServiceCallDetailPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
+      <BackLink href="/service" label="חזרה לקריאות שירות" />
       <PageHeader
         title={call.callNumber}
         subtitle={<>{model?.commercialName ?? "—"}{call.frameNumber && <span className="text-cz-mut"> · שלדה {call.frameNumber}</span>}<span className="text-cz-mut"> · נפתחה {fmtDateTime(call.createdAt)} ע"י {call.agentName}</span></>}
@@ -118,6 +132,26 @@ export default function ServiceCallDetailPage() {
           </section>
         )}
 
+        {/* מרכז תקלות לדגם זה — חיפוש מהיר של התקלה */}
+        {faultDocs.length > 0 && (
+          <section className="card p-5">
+            <h3 className="mb-3 font-display font-extrabold">מרכז תקלות — {model?.commercialName}</h3>
+            <div className="space-y-2">
+              {faultDocs.map((d) => (
+                <div key={d.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-cz-line-soft px-4 py-3">
+                  {d.code && <span className="num rounded-full bg-cz-ink px-2.5 py-1 text-xs font-bold text-white">{d.code}</span>}
+                  <span className="min-w-0 flex-1 truncate text-sm font-bold">{d.title}</span>
+                  <Btn size="sm" variant="outline" onClick={() => setFaultPreview(d)}>צפייה</Btn>
+                  <a href={`/api/files/${d.fileId}?download=1`} className="inline-flex min-h-9 items-center rounded-full px-3 text-xs font-bold text-cz-mut hover:bg-cz-sand">הורדה</a>
+                </div>
+              ))}
+            </div>
+            <Link href={`/knowledge?model=${call.modelId ?? ""}`} className="mt-3 inline-block text-sm font-bold text-cz-red hover:underline">
+              כל המסמכים במרכז התקלות →
+            </Link>
+          </section>
+        )}
+
         {/* טיפול — ליבואן */}
         {!isAgent && (
           <section className="card p-5">
@@ -140,10 +174,7 @@ export default function ServiceCallDetailPage() {
             <div className="mt-3 flex flex-wrap gap-2">
               <Btn size="sm" onClick={() => setNoteOpen(true)}>+ תיעוד טיפול</Btn>
               {call.status !== "resolved" && call.status !== "closed" && (
-                <Btn size="sm" variant="green" onClick={() => {
-                  const resolution = window.prompt("סיכום הפתרון:");
-                  if (resolution) patch({ status: "resolved", resolution }, "הקריאה נפתרה");
-                }}>פתרון וסגירה</Btn>
+                <Btn size="sm" variant="green" onClick={() => setResolveOpen(true)}>פתרון וסגירה</Btn>
               )}
               {call.status === "resolved" && (
                 <Btn size="sm" variant="dark" onClick={() => patch({ status: "closed" }, "הקריאה נסגרה")}>סגירה סופית</Btn>
@@ -172,7 +203,65 @@ export default function ServiceCallDetailPage() {
             </ol>
           )}
         </section>
+
+        {/* היסטוריית סטטוס — תיעוד מלא עם זמנים */}
+        <section className="card p-5">
+          <h3 className="mb-3 font-display font-extrabold">היסטוריית סטטוס</h3>
+          {(call.history ?? []).length === 0 ? (
+            <p className="text-sm text-cz-fog">אין שינויי סטטוס מתועדים</p>
+          ) : (
+            <ol className="relative space-y-3 border-s-2 border-cz-line ps-4">
+              {[...(call.history ?? [])].reverse().map((h, i) => (
+                <li key={i} className="relative">
+                  <span className="absolute -start-[23px] top-1.5 size-2.5 rounded-full bg-cz-ink" />
+                  <div className="text-sm font-semibold">
+                    {h.action}
+                    {h.from && <span className="text-cz-mut"> מ"{h.from}"</span>}
+                    {h.to && <span className="text-cz-mut"> ל"{h.to}"</span>}
+                  </div>
+                  <div className="text-xs text-cz-fog">{h.user} · {fmtDateTime(h.at)}</div>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
       </div>
+
+      {/* מודל פתרון */}
+      <Modal open={resolveOpen} onClose={() => setResolveOpen(false)} title="פתרון הקריאה">
+        <div className="space-y-4">
+          <Field label="סיכום הפתרון">
+            <textarea className="field min-h-24" value={resolutionText} onChange={(e) => setResolutionText(e.target.value)} placeholder="מה נעשה? האם הוחלף חלק?" />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Btn variant="ghost" onClick={() => setResolveOpen(false)}>ביטול</Btn>
+            <Btn
+              variant="green"
+              loading={busy}
+              onClick={async () => {
+                await patch({ status: "resolved", resolution: resolutionText || "נפתר" }, "הקריאה נפתרה");
+                setResolutionText("");
+                setResolveOpen(false);
+              }}
+            >
+              סימון כנפתרה
+            </Btn>
+          </div>
+        </div>
+      </Modal>
+
+      {/* תצוגת מסמך תקלה */}
+      <Modal open={!!faultPreview} onClose={() => setFaultPreview(null)} title={faultPreview?.title} wide>
+        {faultPreview && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {faultPreview.code && <span className="num rounded-full bg-cz-ink px-2.5 py-1 text-xs font-bold text-white">{faultPreview.code}</span>}
+              {faultPreview.notes && <p className="w-full rounded-xl bg-cz-bg px-4 py-3 text-sm">{faultPreview.notes}</p>}
+            </div>
+            <iframe src={`/api/files/${faultPreview.fileId}`} className="h-[60vh] w-full rounded-xl border border-cz-line-soft" title={faultPreview.title} />
+          </div>
+        )}
+      </Modal>
 
       <Modal open={noteOpen} onClose={() => setNoteOpen(false)} title="תיעוד טיפול">
         <div className="space-y-4">

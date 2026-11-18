@@ -100,14 +100,14 @@ export async function getById<T extends { id: string }>(
   return items.find((it) => it.id === id) ?? null;
 }
 
-/** מספר עוקב פנימי בפורמט CR-2026-001 / SC-2026-001 */
+/** מספר עוקב פנימי בפורמט CR-2026-001 / SC-2026-001 / RP-2026-001 */
 export async function nextNumber(
   name: string,
-  prefix: "CR" | "SC"
+  prefix: "CR" | "SC" | "RP"
 ): Promise<string> {
   const year = new Date().getFullYear();
-  const items = await readCollection<{ caseNumber?: string; callNumber?: string }>(name);
-  const key = prefix === "CR" ? "caseNumber" : "callNumber";
+  const items = await readCollection<{ caseNumber?: string; callNumber?: string; repairNumber?: string }>(name);
+  const key = prefix === "CR" ? "caseNumber" : prefix === "SC" ? "callNumber" : "repairNumber";
   const nums = items
     .map((it) => (it as Record<string, string | undefined>)[key] ?? "")
     .filter((n) => n.startsWith(`${prefix}-${year}-`))

@@ -5,6 +5,7 @@ import { apiSend } from "@/lib/client";
 import { Badge, Btn, EmptyState, Field, Modal, fmtDateTime } from "@/components/ui";
 import { useToast } from "@/components/Toasts";
 import FileUploader from "@/components/FileUploader";
+import ConfirmModal from "@/components/ConfirmModal";
 import { DOC_TYPE_LABELS } from "@/lib/types";
 import type { CaseDocument, DocumentType, StoredFile, Defect } from "@/lib/types";
 import type { CaseDetailData } from "@/app/(shell)/cases/[id]/page";
@@ -22,6 +23,7 @@ export default function DocumentsTab({ data, reload }: { data: CaseDetailData; r
   const { case: kase, documents, defects } = data;
   const [pending, setPending] = useState<StoredFile | null>(null);
   const [preview, setPreview] = useState<(CaseDocument & { file: StoredFile | null }) | null>(null);
+  const [removing, setRemoving] = useState<(CaseDocument & { file: StoredFile | null }) | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [form, setForm] = useState<{ type: DocumentType; title: string; note: string; defectIds: string[]; supersedesId: string }>({
     type: "certificate", title: "", note: "", defectIds: [], supersedesId: "",
@@ -57,10 +59,10 @@ export default function DocumentsTab({ data, reload }: { data: CaseDetailData; r
   }
 
   async function removeDoc(id: string) {
-    if (!window.confirm("להסיר את המסמך מהתיק?")) return;
     try {
       await apiSend(`/api/documents?id=${id}`, "DELETE");
       toast.push("success", "המסמך הוסר");
+      setRemoving(null);
       reload();
     } catch {
       toast.push("error", "ההסרה נכשלה");
@@ -133,7 +135,7 @@ export default function DocumentsTab({ data, reload }: { data: CaseDetailData; r
               <div className="flex gap-1.5">
                 <Btn size="sm" variant="outline" onClick={() => setPreview(doc)}>תצוגה מקדימה</Btn>
                 <a href={`/api/files/${doc.fileId}?download=1`} className="inline-flex min-h-9 items-center rounded-full px-4 text-sm font-bold text-cz-mut hover:bg-cz-sand">הורדה</a>
-                <button onClick={() => removeDoc(doc.id)} className="grid size-9 place-items-center rounded-full text-cz-fog hover:bg-cz-red-soft hover:text-cz-red" aria-label="הסרה">✕</button>
+                <button onClick={() => setRemoving(doc)} className="grid size-9 place-items-center rounded-full text-cz-fog hover:bg-cz-red-soft hover:text-cz-red" aria-label="הסרה">✕</button>
               </div>
             </div>
           ))}
@@ -197,11 +199,21 @@ export default function DocumentsTab({ data, reload }: { data: CaseDetailData; r
       <Modal open={!!preview} onClose={() => setPreview(null)} title={preview?.title} wide>
         {preview && <DocPreview doc={preview} />}
       </Modal>
+
+      <ConfirmModal
+        open={!!removing}
+        title="הסרת מסמך"
+        message={removing ? `להסיר את "${removing.title}" מהתיק? הקובץ עצמו יישמר באחסון אך יוסר מרשימת המסמכים.` : ""}
+        confirmLabel="הסרה"
+        danger
+        onConfirm={() => removing && removeDoc(removing.id)}
+        onClose={() => setRemoving(null)}
+      />
     </div>
   );
 }
 
-export function DocPreview({ doc }: { doc: CaseDocument & { file: StoredFile | null } }) {
+export function DocPreview({ doc }: { doc: { title?: string; fileId: string; file: StoredFile | null } }) {
   const mime = doc.file?.mime ?? "";
   if (mime.startsWith("image/")) {
     // eslint-disable-next-line @next/next/no-img-element

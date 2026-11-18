@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { apiGet } from "@/lib/client";
 import { Badge, EmptyState, Spinner, fmtDate } from "@/components/ui";
-import { APPROVAL_LABELS, CASE_STATUS_LABELS, CALL_STATUS_LABELS, DOC_TYPE_LABELS } from "@/lib/types";
-import type { ToolModel, InspectionCase, Part, ServiceCall, ApprovalStatus } from "@/lib/types";
+import BackLink from "@/components/BackLink";
+import { APPROVAL_LABELS, CASE_STATUS_LABELS, CALL_STATUS_LABELS, DOC_TYPE_LABELS, REPAIR_STATUS_LABELS } from "@/lib/types";
+import type { ToolModel, InspectionCase, Part, ServiceCall, Repair, ApprovalStatus } from "@/lib/types";
 
 interface ModelDocument {
   id: string;
@@ -30,6 +31,7 @@ interface ModelDetail {
   cases?: (InspectionCase & { openDefects: number })[];
   parts?: Part[];
   serviceCalls: ServiceCall[];
+  repairs?: Repair[];
   documents?: ModelDocument[];
   history?: ModelHistory[];
 }
@@ -40,7 +42,7 @@ const APPROVAL_TONES: Record<ApprovalStatus, "green" | "amber" | "red"> = {
   returned: "red",
 };
 
-const TAB_KEYS = ["overview", "cases", "parts", "service", "documents", "history"] as const;
+const TAB_KEYS = ["overview", "cases", "parts", "repairs", "service", "documents", "history"] as const;
 
 export default function ModelDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -64,7 +66,7 @@ export default function ModelDetailPage() {
   if (error) return <EmptyState icon="⚠️" title="טעינת הדגם נכשלה" hint={error} />;
   if (!data) return <div className="flex justify-center py-24"><Spinner className="size-8 text-cz-red" /></div>;
 
-  const { model, cases, parts, serviceCalls, documents, history } = data;
+  const { model, cases, parts, serviceCalls, repairs = [], documents, history } = data;
   const hasCasesAccess = cases !== undefined;
   const hasPartsAccess = parts !== undefined;
 
@@ -72,6 +74,7 @@ export default function ModelDetailPage() {
     { key: "overview", label: "סקירה", show: true },
     { key: "cases", label: "תיקי מכון", show: hasCasesAccess, count: cases?.length },
     { key: "parts", label: "חלפים", show: hasPartsAccess, count: parts?.length },
+    { key: "repairs", label: "תיקונים", show: true, count: repairs.length },
     { key: "service", label: "קריאות שירות", show: true, count: serviceCalls.length },
     { key: "documents", label: "מסמכים", show: hasCasesAccess, count: documents?.length },
     { key: "history", label: "היסטוריה", show: hasCasesAccess },
@@ -82,6 +85,7 @@ export default function ModelDetailPage() {
 
   return (
     <div>
+      <BackLink href="/models" label="חזרה לדגמים" />
       {/* כותרת הדגם — Product Hub */}
       <div className="card mb-5 flex flex-col gap-5 p-5 sm:flex-row sm:items-stretch">
         <div className="grid aspect-[4/3] w-full shrink-0 place-items-center overflow-hidden rounded-2xl bg-cz-sand sm:aspect-auto sm:h-48 sm:w-64">
@@ -196,6 +200,32 @@ export default function ModelDetailPage() {
                 <li key={p.id} className="flex items-center justify-between gap-2 py-2.5 text-sm">
                   <Link href={`/parts?q=${encodeURIComponent(p.sku)}`} className="font-bold hover:text-cz-red">{p.name}</Link>
                   <span className="text-cz-mut"><span className="num">{p.sku}</span> · כמות <span className="num">{p.qty}</span></span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {activeTab === "repairs" && (
+        <section className="card p-5">
+          {repairs.length === 0 ? (
+            <p className="text-sm text-cz-fog">אין תיקונים רשומים לדגם זה</p>
+          ) : (
+            <ul className="divide-y divide-cz-line-soft">
+              {repairs.map((r) => (
+                <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                  <Link href={`/repairs/${r.id}`} className="font-bold hover:text-cz-red">
+                    <span className="num text-cz-red">{r.repairNumber}</span>
+                    {r.serialNumber && <span className="num font-normal text-cz-mut"> · סידורי {r.serialNumber}</span>}
+                  </Link>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="max-w-60 truncate text-xs text-cz-mut">{r.faultDescription}</span>
+                    {r.delayReason && <Badge tone="amber">מתעכב</Badge>}
+                    <Badge tone={r.status === "completed" ? "green" : r.status === "waiting" ? "red" : "blue"}>
+                      {REPAIR_STATUS_LABELS[r.status]}
+                    </Badge>
+                  </span>
                 </li>
               ))}
             </ul>

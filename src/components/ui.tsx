@@ -39,6 +39,26 @@ export function Spinner({ className = "size-5" }: { className?: string }) {
   );
 }
 
+/** שלד טעינה לרשימות — במקום ספינר בודד */
+export function ListSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="space-y-3" aria-label="טוען…">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="card p-4 sm:p-5">
+          <div className="flex items-center gap-3">
+            <div className="skeleton h-10 w-10 shrink-0 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <div className="skeleton h-4 w-1/3" />
+              <div className="skeleton h-3 w-2/3" />
+            </div>
+            <div className="skeleton h-6 w-20 rounded-full" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── תג סטטוס צבעוני ────────────────────────────────────────────────────────
 
 export type Tone = "gray" | "red" | "amber" | "blue" | "purple" | "green" | "dark";

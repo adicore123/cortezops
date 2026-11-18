@@ -4,8 +4,8 @@ import { readCollection, ensureInitSafe } from "@/lib/dashboard-helpers";
 import { getSettings } from "@/lib/settings";
 import { Badge, Stat } from "@/components/ui";
 import { fmtDate } from "@/lib/format";
-import { CALL_STATUS_LABELS, CASE_STATUS_LABELS, DEFECT_STATUS_LABELS } from "@/lib/types";
-import type { InspectionCase, Defect, ServiceCall, ToolModel, Notification, Part } from "@/lib/types";
+import { CALL_STATUS_LABELS, CASE_STATUS_LABELS, DEFECT_STATUS_LABELS, REPAIR_STATUS_LABELS, REPAIR_DEVICE_LABELS } from "@/lib/types";
+import type { InspectionCase, Defect, ServiceCall, Repair, ToolModel, Notification, Part } from "@/lib/types";
 
 interface ActionItem {
   title: string;
@@ -19,10 +19,11 @@ export default async function DashboardPage() {
   const user = await getUserServer();
   if (!user) return null;
 
-  const [cases, defects, calls, models, notes, parts, settings] = await Promise.all([
+  const [cases, defects, calls, repairs, models, notes, parts, settings] = await Promise.all([
     readCollection<InspectionCase>("cases"),
     readCollection<Defect>("defects"),
     readCollection<ServiceCall>("serviceCalls"),
+    readCollection<Repair>("repairs"),
     readCollection<ToolModel>("models"),
     readCollection<Notification>("notifications"),
     readCollection<Part>("parts"),
@@ -60,8 +61,18 @@ export default async function DashboardPage() {
   const lowStock = parts.filter((p) => p.qty <= threshold).sort((a, b) => a.qty - b.qty);
   const pendingModels = canCases ? models.filter((m) => !m.archived && m.approval.status === "pending") : [];
 
+  // תיקונים פתוחים ומתעכבים
+  const activeRepairs = repairs.filter((r) => r.status !== "completed");
+  const delayedRepairs = activeRepairs.filter((r) => Boolean(r.delayReason?.trim()));
+
   // ─── מרכז הפעולות: דורש טיפול ────────────────────────────────────────────
   const actions: ActionItem[] = [
+    ...delayedRepairs.slice(0, 2).map((r) => ({
+      title: `תיקון ${r.repairNumber} מתעכב · ${modelName(r.modelId) !== "—" ? modelName(r.modelId) : (r.modelName ?? "")}`,
+      sub: `סיבת עיכוב: ${r.delayReason}`,
+      href: `/repairs?q=${encodeURIComponent(r.repairNumber)}`,
+      tone: "amber" as const,
+    })),
     ...awaiting.slice(0, 3).map((d) => ({
       title: `ליקוי: ${d.title}`,
       sub: `ממתין לאימות · תיק ${caseById.get(d.caseId)?.caseNumber ?? "—"}`,
@@ -109,10 +120,11 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      {/* ארבעה מדדים */}
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {/* חמישה מדדים */}
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {canCases && <Stat label="תיקים בטיפול" value={activeCases.length} tone="red" href="/cases" />}
         {canCases && <Stat label="ליקויים לאימות" value={awaiting.length} tone="purple" href="/defects?status=awaitingVerification" />}
+        <Stat label="כלים בתיקון" value={activeRepairs.length} tone={delayedRepairs.length > 0 ? "amber" : "ink"} href="/repairs" />
         <Stat label="קריאות שירות חדשות" value={newCalls.length} tone="green" href="/service" />
         {canInventory && <Stat label="חוסרים במלאי" value={lowStock.length} tone="amber" href="/parts" />}
       </div>
@@ -261,6 +273,38 @@ export default async function DashboardPage() {
                     <div className="truncate text-xs text-cz-mut">{c.agentName} · {fmtDate(c.createdAt)}</div>
                   </div>
                   <Badge tone={c.status === "new" ? "red" : "amber"}>{CALL_STATUS_LABELS[c.status]}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* תיקונים במעבדה */}
+        <section className="card p-5 lg:col-span-2">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-display text-lg font-extrabold">06 / תיקונים ומעבדה — בטיפול</h2>
+            <Link href="/repairs" className="text-sm font-bold text-cz-red hover:underline">ללוח התיקונים →</Link>
+          </div>
+          {activeRepairs.length === 0 ? (
+            <p className="py-4 text-center text-sm text-cz-fog">אין כלים הממתינים לתיקון 🎉</p>
+          ) : (
+            <ul className="divide-y divide-cz-line-soft">
+              {activeRepairs.slice(0, 5).map((r) => (
+                <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
+                  <div className="min-w-0">
+                    <Link href={`/repairs?q=${encodeURIComponent(r.repairNumber)}`} className="block truncate font-bold hover:text-cz-red">
+                      <span className="num text-cz-red">{r.repairNumber}</span> · {REPAIR_DEVICE_LABELS[r.deviceType]} · {modelName(r.modelId) !== "—" ? modelName(r.modelId) : (r.modelName ?? "—")}
+                      {r.serialNumber && <span className="num ms-2 text-xs font-normal text-cz-mut">({r.serialNumber})</span>}
+                    </Link>
+                    <div className="truncate text-xs text-cz-mut">
+                      תקלה: {r.faultDescription}
+                      {r.delayReason && <span className="ms-2 font-bold text-amber-700">· מתעכב: {r.delayReason}</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {r.delayReason && <Badge tone="amber">מתעכב</Badge>}
+                    <Badge tone={r.status === "waiting" ? "red" : "blue"}>{REPAIR_STATUS_LABELS[r.status]}</Badge>
+                  </div>
                 </li>
               ))}
             </ul>

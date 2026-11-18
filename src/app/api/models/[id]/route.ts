@@ -3,7 +3,7 @@ import { route, json, bad, body } from "@/lib/api";
 import { readCollection, updateById, getById } from "@/lib/db/store";
 import { requireUser, canAccess } from "@/lib/auth";
 import { APPROVAL_LABELS } from "@/lib/types";
-import type { ToolModel, InspectionCase, Defect, Part, ServiceCall, CaseDocument, ModelApproval, ApprovalStatus } from "@/lib/types";
+import type { ToolModel, InspectionCase, Defect, Part, ServiceCall, Repair, CaseDocument, ModelApproval, ApprovalStatus } from "@/lib/types";
 
 /** כרטיס דגם: פרטים + תיקים + חלפים תואמים + קריאות + מסמכים + היסטוריה — לפי הרשאות המשתמש. */
 export const GET = route(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
@@ -69,9 +69,15 @@ export const GET = route(async (req: NextRequest, ctx: { params: Promise<{ id: s
     out.parts = parts.filter((p) => p.compatibleModelIds.includes(id));
   }
 
-  const calls = await readCollection<ServiceCall>("serviceCalls");
+  const [calls, repairs] = await Promise.all([
+    readCollection<ServiceCall>("serviceCalls"),
+    readCollection<Repair>("repairs"),
+  ]);
   out.serviceCalls = calls
     .filter((c) => c.modelId === id && (res.user.role !== "agent" || c.agentId === res.user.id))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  out.repairs = repairs
+    .filter((r) => r.modelId === id)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return json(out);

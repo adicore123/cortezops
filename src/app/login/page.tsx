@@ -126,7 +126,7 @@ export default function LoginPage() {
 
           <div className="mt-6 rounded-xl border border-cz-line-soft bg-white px-4 py-3 text-center text-xs leading-relaxed text-cz-mut">
             <div><b className="text-cz-ink">מנהל — כל המודולים:</b> <span dir="ltr">admin / admin123</span></div>
-            <div>צוות יבואן: <span dir="ltr">danny / danny123</span> · סוכן (קריאות בלבד): <span dir="ltr">avi / avi123</span></div>
+            <div>צוות יבואן: <span dir="ltr">danny / danny123</span> · סוכן (שירות ותיקונים): <span dir="ltr">avi / avi123</span></div>
           </div>
         </div>
       </div>

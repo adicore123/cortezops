@@ -15,7 +15,9 @@ const ICONS: Record<string, string> = {
   defects: "M12 2 1 21h22zM11 10h2v6h-2zm0 7h2v2h-2z",
   models: "M15 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM4 17c0-3 3-4.5 6-4.5s6 1.5 6 4.5v2H4zM17.5 8l3.5 6h-7z",
   parts: "M21 8l-2 2-2.5-2.5L17 5zM11 11l5 5-7 7H4v-5zM3 3l4 4-2 2-4-4z",
+  repairs: "M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z",
   service: "M14 6a4 4 0 1 0-1.5 7.7L15 16h2v2h2v2h3v-3l-6.7-6.7A4 4 0 0 0 14 6zM3 8l6 6 2-2-6-6z",
+  knowledge: "M4 4h7a3 3 0 0 1 3 3v13a2.5 2.5 0 0 0-2.5-2.5H4zM20 4h-6a3 3 0 0 0-3 3v13a2.5 2.5 0 0 1 2.5-2.5H20z",
   settings: "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4-2.1-.6-.5-1.3 1.1-1.9-1.7-1.7-1.9 1.1-1.3-.5L14.1 4h-2.4l-.6 2.1-1.3.5L7.9 5.5 6.2 7.2l1.1 1.9-.5 1.3L4.7 11v2.4l2.1.6.5 1.3-1.1 1.9 1.7 1.7 1.9-1.1 1.3.5.6 2.1h2.4l.6-2.1 1.3-.5 1.9 1.1 1.7-1.7-1.1-1.9.5-1.3 2.1-.6z",
 };
 
@@ -50,6 +52,7 @@ export default function Shell({
   logoUrl,
   notifications,
   openDefects = 0,
+  activeRepairs = 0,
   children,
 }: {
   user: PublicUser;
@@ -57,6 +60,7 @@ export default function Shell({
   logoUrl: string;
   notifications: ShellNotification[];
   openDefects?: number;
+  activeRepairs?: number;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -68,11 +72,13 @@ export default function Shell({
 
   const nav: NavItem[] = [
     { href: "/", label: "לוח בקרה", shortLabel: "בקרה", icon: "dashboard", show: true },
+    { href: "/repairs", label: "תיקונים ומעבדה", shortLabel: "תיקונים", icon: "repairs", show: user.role === "admin" || (user.role === "staff" && user.permissions.service) || user.role === "agent", badge: activeRepairs || undefined },
     { href: "/cases", label: "תיקי מכון התקנים", shortLabel: "תקנים", icon: "cases", show: user.role === "admin" || (user.role === "staff" && user.permissions.cases) },
     { href: "/defects", label: "ליקויים", shortLabel: "ליקויים", icon: "defects", show: user.role === "admin" || (user.role === "staff" && user.permissions.cases), badge: openDefects || undefined },
     { href: "/models", label: "מאגר דגמים", shortLabel: "דגמים", icon: "models", show: true },
     { href: "/parts", label: "מלאי חלפים", shortLabel: "חלפים", icon: "parts", show: user.role === "admin" || (user.role === "staff" && user.permissions.inventory) },
     { href: "/service", label: "קריאות שירות", shortLabel: "שירות", icon: "service", show: true },
+    { href: "/knowledge", label: "מרכז תקלות ומדריכים", shortLabel: "תקלות", icon: "knowledge", show: true },
     { href: "/settings", label: "הגדרות", shortLabel: "הגדרות", icon: "settings", show: user.role === "admin" },
   ].filter((n) => n.show);
 

@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { route, json, bad, body } from "@/lib/api";
 import { readCollection, updateById, getById, writeCollection } from "@/lib/db/store";
 import { requireArea } from "@/lib/auth";
+import { CALL_STATUS_LABELS } from "@/lib/types";
 import type { ServiceCall, ToolModel, Part, StoredFile, ServiceCallStatus, Notification } from "@/lib/types";
 
 export const GET = route(async (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => {
@@ -49,13 +50,27 @@ export const PATCH = route(async (req: NextRequest, ctx: { params: Promise<{ id:
   const now = new Date().toISOString();
   const updated = await updateById<ServiceCall>("serviceCalls", id, (c) => {
     let next = { ...c, updatedAt: now };
-    if (res.user.role !== "agent" && data.assignee !== undefined) next.assignee = data.assignee;
-    if (data.status) next.status = data.status;
+    const history: NonNullable<ServiceCall["history"]> = [];
+    if (res.user.role !== "agent" && data.assignee !== undefined && data.assignee !== (c.assignee ?? "")) {
+      next.assignee = data.assignee;
+      history.push({ at: now, user: res.user.name, action: "הקצאת אחראי", to: data.assignee || "ללא" });
+    }
+    if (data.status && data.status !== c.status) {
+      next.status = data.status;
+      history.push({
+        at: now,
+        user: res.user.name,
+        action: "עדכון סטטוס",
+        from: CALL_STATUS_LABELS[c.status],
+        to: CALL_STATUS_LABELS[data.status],
+      });
+    }
     if (data.linkedPartIds) next.linkedPartIds = data.linkedPartIds;
     if (data.treatmentNote?.trim()) {
       next.treatmentLog = [...c.treatmentLog, { id: crypto.randomUUID(), at: now, user: res.user.name, note: data.treatmentNote.trim() }];
     }
     if (data.resolution !== undefined) next.resolution = data.resolution;
+    next.history = [...(c.history ?? []), ...history];
     return next;
   });
 

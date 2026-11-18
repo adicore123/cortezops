@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiGet } from "@/lib/client";
-import { Badge, EmptyState, PageHeader, Spinner, fmtDate } from "@/components/ui";
+import { Badge, EmptyState, PageHeader, ListSkeleton, fmtDate } from "@/components/ui";
 import { CALL_STATUS_LABELS } from "@/lib/types";
 import type { ServiceCall, ServiceCallStatus } from "@/lib/types";
 
@@ -40,7 +40,7 @@ export default function ServiceCallsPage() {
     });
   }, [rows, q, status]);
 
-  if (!rows) return <div className="flex justify-center py-24"><Spinner className="size-8 text-cz-red" /></div>;
+  if (!rows) return <ListSkeleton rows={5} />;
 
   const isNewForMe = (c: CallRow) => c.status === "new" || c.status === "awaitingPart";
 

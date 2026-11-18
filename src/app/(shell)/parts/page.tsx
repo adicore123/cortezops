@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { apiGet, apiSend } from "@/lib/client";
-import { Badge, Btn, EmptyState, Field, Modal, PageHeader, Spinner, fmtDateTime, fmtMoney } from "@/components/ui";
+import { Badge, Btn, EmptyState, Field, Modal, PageHeader, ListSkeleton, Spinner, fmtDateTime, fmtMoney } from "@/components/ui";
 import { useToast } from "@/components/Toasts";
 import FileUploader from "@/components/FileUploader";
 import { MOVEMENT_LABELS } from "@/lib/types";
@@ -75,7 +75,7 @@ function PartsInner() {
     }
   }
 
-  if (!rows) return <div className="flex justify-center py-24"><Spinner className="size-8 text-cz-red" /></div>;
+  if (!rows) return <ListSkeleton rows={5} />;
 
   return (
     <div>

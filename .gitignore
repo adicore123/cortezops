@@ -48,3 +48,11 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# אישורי MongoDB Atlas — רגיש!
+atlas-credentials.env
+
+# Local installers and diagnostic output
+/Antigravity-x64.exe
+/kb-res.json
+/scripts/check-mongo.cjs

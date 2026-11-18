@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { route, json } from "@/lib/api";
 import { requireUser, canAccess } from "@/lib/auth";
 import { readCollection } from "@/lib/db/store";
-import type { ToolModel, InspectionCase, Defect, Part, ServiceCall, CaseDocument } from "@/lib/types";
+import type { ToolModel, InspectionCase, Defect, Part, ServiceCall, Repair, CaseDocument } from "@/lib/types";
+import { REPAIR_STATUS_LABELS, REPAIR_DEVICE_LABELS } from "@/lib/types";
 
 // ─── חיפוש גלובלי ────────────────────────────────────────────────────────────
 // חיפוש חוצה־קולקציות עם סינון הרשאות: סוכן רואה רק קריאות שירות משלו,
@@ -155,6 +156,37 @@ export const GET = route(async (req: NextRequest) => {
     }
   }
   push("service", "קריאות שירות", callItems);
+
+  // ─── תיקונים (מעבדה) ───────────────────────────────────────────────────────
+  const repairs = await readCollection<Repair>("repairs");
+  const modelNameById = new Map(models.map((m) => [m.id, m.commercialName]));
+  const repairItems: SearchItem[] = [];
+  for (const r of repairs) {
+    const mName = modelNameById.get(r.modelId) ?? r.modelName ?? "";
+    if (
+      hit(
+        r.repairNumber,
+        r.serialNumber,
+        mName,
+        r.faultDescription,
+        r.fixDescription,
+        r.delayReason,
+        r.customerName,
+        r.customerPhone,
+        r.technician
+      )
+    ) {
+      repairItems.push({
+        id: r.id,
+        title: `תיקון ${r.repairNumber} · ${mName || REPAIR_DEVICE_LABELS[r.deviceType]}`,
+        sub: [r.serialNumber && `סידורי ${r.serialNumber}`, REPAIR_STATUS_LABELS[r.status], r.delayReason && `מתעכב: ${r.delayReason}`]
+          .filter(Boolean)
+          .join(" · "),
+        href: `/repairs/${r.id}`,
+      });
+    }
+  }
+  push("repairs", "תיקונים", repairItems);
 
   return json({ groups });
 });

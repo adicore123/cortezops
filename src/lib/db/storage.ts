@@ -28,8 +28,11 @@ export const isVercel =
 /**
  * בחירת אדפטר בזמן קריאה (לא בטעינת מודול): מבטיחה שכל הנתיבים יראו
  * את אותה סביבה גם אם מודולים אותחלו בשלבים שונים של הבנייה/הריצה.
+ * סדר עדיפות: MongoDB (כשמוגדר MONGODB_URI — מקור נתונים אחד לכל הסביבות),
+ * אחר כך Blob על Vercel, ואז דיסק מקומי.
  */
 export function storageFor(): StorageAdapter {
+  if (process.env.MONGODB_URI) return mongo;
   const blobActive =
     Boolean(process.env.BLOB_READ_WRITE_TOKEN) &&
     (process.env.VERCEL === "1" || process.env.CZ_USE_BLOB === "1");
@@ -52,13 +55,15 @@ export interface StorageAdapter {
   /** קובץ העלאה בינארי */
   saveUpload(id: string, data: Buffer): Promise<void>;
   readUpload(id: string): Promise<Buffer | null>;
+  /** מחיקת קובץ העלאה */
+  deleteUpload(id: string): Promise<void>;
   /** כתובת הורדה חתומה (Blob) או null באחסון מקומי */
   uploadDownloadUrl(id: string): Promise<string | null>;
   /** הרצת read-modify-write תחת נעילה מבוזרת (no-op מקומית) */
   withLock<T>(name: string, fn: () => Promise<T>): Promise<T>;
   /** גיבוי אוספים לתיקיית חותמת זמן. מחזיר רשימת שמות שגובו. */
   backup(names: string[], stamp: string): Promise<string[]>;
-  kind(): "local-disk" | "vercel-blob";
+  kind(): "local-disk" | "vercel-blob" | "mongodb";
 }
 
 // ─── אדפטר מקומי ─────────────────────────────────────────────────────────────
@@ -93,6 +98,9 @@ const local: StorageAdapter = {
     } catch {
       return null;
     }
+  },
+  async deleteUpload(id) {
+    await fs.unlink(path.join(UPLOADS_DIR, id)).catch(() => undefined);
   },
   async uploadDownloadUrl() {
     return null;
@@ -195,6 +203,11 @@ const vercelBlob: StorageAdapter = {
     }
   },
 
+  async deleteUpload(id) {
+    const { del } = await import("@vercel/blob");
+    await del(uploadPath(id)).catch(() => undefined);
+  },
+
   async uploadDownloadUrl() {
     // ב־Blob פרטי אין הפניה לדפדפן — הקבצים מוזרמים דרך /api/files עם בדיקת הרשאה
     return null;
@@ -245,5 +258,192 @@ const vercelBlob: StorageAdapter = {
 
   kind() {
     return "vercel-blob";
+  },
+};
+
+// ─── אדפטר MongoDB Atlas ────────────────────────────────────────────────────
+// מקור נתונים אחד לכל הסביבות: אוסף `collections` מכיל מסמך אחד לכל אוסף
+// ({_id, data}), העלאות ב־GridFS, נעילות כתיבה בקולקשן `locks` עם TTL,
+// וגיבויים בקולקשן `backups`.
+
+const MONGO_DB_NAME = "cortez_ops";
+let mongoClient: import("mongodb").MongoClient | null = null;
+
+/**
+ * חיבור עם התאוששות: קליינט שנכשל (למשל מופע חם מהתקופה שבה Atlas חסם את
+ * ה-IP) לא נשמר — כל קריאה מנסה מחדש, ופעולה שנתקלת ב-"Topology is closed"
+ * מנותקת ונבנית מחדש פעם אחת.
+ */
+async function getMongoDb(): Promise<import("mongodb").Db> {
+  if (!mongoClient) {
+    const { MongoClient } = await import("mongodb");
+    const client = new MongoClient(process.env.MONGODB_URI!, {
+      serverSelectionTimeoutMS: 8000,
+      retryWrites: true,
+    });
+    try {
+      await client.connect();
+      mongoClient = client;
+    } catch (err) {
+      await client.close().catch(() => undefined); // לא לשמור קליינט שבור
+      throw err;
+    }
+  }
+  return mongoClient.db(MONGO_DB_NAME);
+}
+
+/** פעולת Mongo עם התאוששות אחת מ-"Topology is closed" */
+async function mongoOp<T>(fn: (db: import("mongodb").Db) => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const db = await getMongoDb();
+      return await fn(db);
+    } catch (err) {
+      const broken = err instanceof Error && /Topology is closed|topology description/i.test(err.message);
+      try { await mongoClient?.close(); } catch { /* כבר סגור */ }
+      mongoClient = null; // הבנייה מחדש תתרחש בניסיון הבא
+      if (!broken || attempt === 1) throw err;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+  throw new Error("unreachable");
+}
+
+const isDuplicateKey = (err: unknown) =>
+  err instanceof Error && (err as { code?: number }).code === 11000;
+
+interface CollectionDoc { _id: string; data: unknown[]; updatedAt: Date }
+interface LockDoc { _id: string; at: Date }
+interface BackupDoc { _id: string; data: Record<string, unknown[]>; createdAt: Date }
+
+const mongo: StorageAdapter = {
+  async readRaw(name) {
+    return mongoOp(async (db) => {
+      const doc = await db.collection<CollectionDoc>("collections").findOne({ _id: name });
+      return doc ? JSON.stringify(doc.data ?? []) : null;
+    });
+  },
+
+  async writeRaw(name, content) {
+    await mongoOp(async (db) => {
+      const data = JSON.parse(content) as unknown[];
+      await db
+        .collection<CollectionDoc>("collections")
+        .updateOne({ _id: name }, { $set: { data, updatedAt: new Date() } }, { upsert: true });
+    });
+  },
+
+  async writeRawIfAbsent(name, content) {
+    return mongoOp(async (db) => {
+      const data = JSON.parse(content) as unknown[];
+      try {
+        await db.collection<CollectionDoc>("collections").insertOne({ _id: name, data, updatedAt: new Date() });
+        return true;
+      } catch (err) {
+        if (isDuplicateKey(err)) return false; // כבר קיים — מישהו הקדים
+        throw err;
+      }
+    });
+  },
+
+  async saveUpload(id, data) {
+    await mongoOp(async (db) => {
+      const { GridFSBucket } = await import("mongodb");
+      const bucket = new GridFSBucket(db, { bucketName: "uploads" });
+      // הסרת גרסאות קודמות באותו שם (דריסה)
+      const previous = await bucket.find({ filename: id }).toArray();
+      for (const f of previous) await bucket.delete(f._id).catch(() => undefined);
+      await new Promise<void>((resolve, reject) => {
+        const stream = bucket.openUploadStream(id);
+        stream.end(data);
+        stream.on("finish", () => resolve());
+        stream.on("error", reject);
+      });
+    });
+  },
+
+  async readUpload(id) {
+    try {
+      return await mongoOp(async (db) => {
+        const { GridFSBucket } = await import("mongodb");
+        const bucket = new GridFSBucket(db, { bucketName: "uploads" });
+        return await new Promise<Buffer>((resolve, reject) => {
+          const chunks: Buffer[] = [];
+          const stream = bucket.openDownloadStreamByName(id);
+          stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+          stream.on("end", () => resolve(Buffer.concat(chunks)));
+          stream.on("error", reject);
+        });
+      });
+    } catch {
+      return null; // קובץ חסר
+    }
+  },
+
+  async deleteUpload(id) {
+    await mongoOp(async (db) => {
+      const { GridFSBucket } = await import("mongodb");
+      const bucket = new GridFSBucket(db, { bucketName: "uploads" });
+      const existing = await bucket.find({ filename: id }).toArray();
+      for (const f of existing) await bucket.delete(f._id).catch(() => undefined);
+    });
+  },
+
+  async uploadDownloadUrl() {
+    // GridFS פרטי — הקבצים מוזרמים דרך /api/files עם בדיקת הרשאה
+    return null;
+  },
+
+  async withLock(name, fn) {
+    return mongoOp(async (db) => {
+      const locks = db.collection<LockDoc>("locks");
+      const deadline = Date.now() + LOCK_WAIT_MS;
+
+      while (Date.now() < deadline) {
+        try {
+          // רכישה: הוספה — דופליקט = תפוסה
+          await locks.insertOne({ _id: name, at: new Date() });
+          try {
+            return await fn();
+          } finally {
+            await locks.deleteOne({ _id: name }).catch(() => undefined);
+          }
+        } catch (err) {
+          if (!isDuplicateKey(err)) throw err;
+          // תפוסה — אם ישנה מעבר ל־TTL, גונבים אותה אטומית
+          const stale = new Date(Date.now() - LOCK_TTL_MS);
+          const stolen = await locks.updateOne({ _id: name, at: { $lt: stale } }, { $set: { at: new Date() } });
+          if (stolen.modifiedCount > 0) {
+            try {
+              return await fn();
+            } finally {
+              await locks.deleteOne({ _id: name }).catch(() => undefined);
+            }
+          }
+          await new Promise((r) => setTimeout(r, 150));
+        }
+      }
+      // לא הושגה נעילה — מריצים בכל זאת (מנוע נעילות בתור המקומי מכסה את רוב המקרים)
+      return fn();
+    });
+  },
+
+  async backup(names, stamp) {
+    return mongoOp(async (db) => {
+      const data: Record<string, unknown[]> = {};
+      for (const name of names) {
+        const raw = await storage.readRaw(name);
+        if (raw === null) continue;
+        data[name] = JSON.parse(raw) as unknown[];
+      }
+      await db
+        .collection<BackupDoc>("backups")
+        .updateOne({ _id: `backup-${stamp}` }, { $set: { data, createdAt: new Date() } }, { upsert: true });
+      return Object.keys(data);
+    });
+  },
+
+  kind() {
+    return "mongodb";
   },
 };

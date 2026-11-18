@@ -2,15 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
-import { apiGet } from "@/lib/client";
-import { Badge, EmptyState, PageHeader, Spinner, fmtDate } from "@/components/ui";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { apiGet, apiSend } from "@/lib/client";
+import { Badge, EmptyState, PageHeader, Spinner, fmtDate, fmtDateTime } from "@/components/ui";
+import { useToast } from "@/components/Toasts";
 import { CASE_STATUS_LABELS, DEFECT_STATUS_LABELS } from "@/lib/types";
 import type { InspectionCase, Defect, CaseDocument, ToolModel, StoredFile, CaseStatus } from "@/lib/types";
 import DetailsTab from "@/components/case/DetailsTab";
 import DefectsTab from "@/components/case/DefectsTab";
 import DocumentsTab from "@/components/case/DocumentsTab";
 import QuickAttachModal from "@/components/case/QuickAttachModal";
+import BackLink from "@/components/BackLink";
+import ConfirmModal from "@/components/ConfirmModal";
 
 export interface CaseDetailData {
   case: InspectionCase;
@@ -37,10 +40,15 @@ const STATUS_TONES: Record<CaseStatus, "gray" | "blue" | "amber" | "purple" | "g
 export default function CaseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const toast = useToast();
   const [data, setData] = useState<CaseDetailData | null>(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("details");
   const [attachOpen, setAttachOpen] = useState(false);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const t = searchParams.get("tab");
@@ -66,8 +74,36 @@ export default function CaseDetailPage() {
   const awaiting = defects.filter((d) => d.status === "awaitingVerification").length;
   const missing = kase.checklist.filter((i) => !i.done);
 
+  async function approveCase() {
+    setBusy(true);
+    try {
+      await apiSend(`/api/cases/${kase.id}`, "PATCH", { approveInstitute: true });
+      toast.push("success", "התיק אושר ע״י מכון התקנים — נכנס להיסטוריה");
+      setApproveOpen(false);
+      await load();
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "האישור נכשל");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteCase() {
+    setBusy(true);
+    try {
+      await apiSend(`/api/cases/${kase.id}`, "DELETE");
+      toast.push("success", `התיק ${kase.caseNumber} נמחק עם כל ליקוייו ומסמכיו`);
+      router.push("/cases");
+    } catch (err) {
+      toast.push("error", err instanceof Error ? err.message : "המחיקה נכשלה");
+      setBusy(false);
+      setDeleteOpen(false);
+    }
+  }
+
   return (
     <div>
+      <BackLink href="/cases" label="חזרה לתיקים" />
       <PageHeader
         title={kase.caseNumber}
         subtitle={
@@ -80,6 +116,7 @@ export default function CaseDetailPage() {
         actions={
           <>
             <Badge tone={STATUS_TONES[kase.status]}>{CASE_STATUS_LABELS[kase.status]}</Badge>
+            {kase.approvedAt && <Badge tone="green">מאושר מכו״ת · {fmtDate(kase.approvedAt)}</Badge>}
             {openDefects > 0 && <Badge tone="red">{openDefects} ליקויים פתוחים</Badge>}
             {awaiting > 0 && <Badge tone="purple">ממתין לאימות</Badge>}
             <button
@@ -88,8 +125,44 @@ export default function CaseDetailPage() {
             >
               📄 צרף PDF
             </button>
+            {!kase.approvedAt && (
+              <button
+                onClick={() => setApproveOpen(true)}
+                className="inline-flex min-h-11 items-center gap-2 rounded-full border-2 border-cz-green bg-white px-5 text-[15px] font-bold text-cz-green transition-colors hover:bg-cz-green hover:text-white"
+              >
+                ✓ אושר ע״י מכון התקנים
+              </button>
+            )}
+            <button
+              onClick={() => setDeleteOpen(true)}
+              className="grid size-11 place-items-center rounded-full text-cz-fog transition-colors hover:bg-cz-red-soft hover:text-cz-red"
+              aria-label="מחיקת התיק"
+              title="מחיקת התיק"
+            >
+              🗑
+            </button>
           </>
         }
+      />
+
+      <ConfirmModal
+        open={approveOpen}
+        title="אישור מכון התקנים"
+        message={`לסמן את התיק ${kase.caseNumber} כמאושר ע״י מכון התקנים? התיק ייכנס להיסטוריה, סטטוס יעודכן ל"הושלם" והפעולה תירשם ביומן.`}
+        confirmLabel="אישור וכניסה להיסטוריה"
+        busy={busy}
+        onConfirm={approveCase}
+        onClose={() => setApproveOpen(false)}
+      />
+      <ConfirmModal
+        open={deleteOpen}
+        title="מחיקת תיק"
+        message={`למחוק את התיק ${kase.caseNumber} לצמיתות? יימחקו גם ${defects.length} ליקויים ו־${documents.length} מסמכים, כולל הקבצים שצורפו אליהם. לא ניתן לשחזר.`}
+        confirmLabel="מחיקה לצמיתות"
+        danger
+        busy={busy}
+        onConfirm={deleteCase}
+        onClose={() => setDeleteOpen(false)}
       />
 
       {/* התקדמות התיק: ליקויים אומתים מתוך הכל */}
